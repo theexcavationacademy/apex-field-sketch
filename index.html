@@ -83,9 +83,46 @@
   #ok { background:var(--blue); color:#fff; } #cancel { background:#eee; color:#444; } #del { background:#fbe3e3; color:#b30000; flex:0 0 90px !important; }
   .chk { display:flex; align-items:center; gap:8px; margin-top:10px; }
   .chk input { width:auto !important; transform:scale(1.4); }
+  /* team sign-in gate */
+  .lgl { display:block; font-size:12px; font-weight:bold; color:#555; margin:10px 0 3px; }
+  .lgi { width:100%; padding:10px; border:1.5px solid #ccc; border-radius:8px; font-size:15px; box-sizing:border-box; }
+  .lgbtn { width:100%; margin-top:12px; padding:13px; border:none; border-radius:9px; background:#1C4E9E; color:#fff; font-size:15.5px; font-weight:bold; }
+  .lgbtn.alt { background:#eef3fb; color:#1C4E9E; }
+  .lga { color:#1B75BC; font-size:13px; font-weight:700; text-decoration:underline; cursor:pointer; }
+  .lgh3 { margin:18px 0 2px; font-size:14px; color:#21395E; }
+  .adrow { position:relative; background:#f4f7fc; border-radius:9px; padding:9px 82px 9px 11px; margin:7px 0; font-size:14px; }
+  .adx { position:absolute; right:8px; top:50%; transform:translateY(-50%); background:#fbe3e3; color:#b30000; border:none; border-radius:7px; padding:7px 10px; font-size:12.5px; font-weight:bold; }
 </style>
 </head>
 <body>
+<!-- ===== team sign-in gate: only registered APEX technicians get past this ===== -->
+<div id="loginGate" style="display:none;position:fixed;inset:0;z-index:500;background:#21395E;overflow:auto;-webkit-overflow-scrolling:touch;">
+  <div style="max-width:400px;margin:7vh auto 40px;padding:0 18px;">
+    <div style="text-align:center;margin-bottom:16px;">
+      <svg width="170" height="82" viewBox="-14 0 640 290">
+        <path d="M112,8 H592 L526,212 H46 Z" fill="#ffffff" opacity="0.10"/>
+        <text x="315" y="168" font-family="Arial" font-style="italic" font-weight="900" font-size="158" fill="#ffffff" text-anchor="middle">APEX</text>
+        <text x="318" y="281" font-family="Arial" font-weight="900" font-size="68" fill="#1B75BC" text-anchor="middle">EHS SERVICES</text>
+      </svg>
+      <div style="color:#9fb6d8;font-weight:800;letter-spacing:4px;font-size:13px;margin-top:4px;">FIELD SKETCH</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:20px 18px 22px;box-shadow:0 8px 30px rgba(0,0,0,.35);">
+      <div id="lg-login">
+        <h2 style="margin:0 0 4px;font-size:19px;color:#21395E;">Team sign-in</h2>
+        <p style="font-size:13px;color:#667;margin:0 0 8px;">APEX technicians only. Everything you draw is stamped with your name.</p>
+        <label class="lgl">Company email</label>
+        <input id="lg-email" type="email" class="lgi" autocapitalize="none" autocomplete="username" placeholder="you@apexehs.ca">
+        <label class="lgl">Password</label>
+        <input id="lg-pass" type="password" class="lgi" autocomplete="current-password">
+        <div id="lg-err" style="color:#C00000;font-size:13px;font-weight:600;min-height:18px;margin-top:7px;"></div>
+        <button id="lg-go" class="lgbtn">Log in</button>
+        <div style="text-align:center;margin-top:15px;"><a id="lg-adminlink" class="lga">Admin — manage technicians</a></div>
+      </div>
+      <div id="lg-admin" style="display:none;"></div>
+    </div>
+    <p style="color:#8fa6c8;font-size:11.5px;text-align:center;margin-top:14px;line-height:1.5;">Access is limited to the APEX team.<br>Need a login? Ask your project manager.</p>
+  </div>
+</div>
 <div id="app">
   <div id="top">
     <div style="display:flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;">
@@ -1290,7 +1327,7 @@ function resetJob(){
 }
 document.getElementById('saveBtn').onclick = saveMenu;
 /* ===== HELP / SOP / FEEDBACK ===== */
-const APP_VERSION = 'v22';
+const APP_VERSION = 'v29';
 const SOP_HTML = `
 <h2>? Help — APEX Field Sketch ${APP_VERSION}</h2>
 <div style="max-height:52vh;overflow-y:auto;font-size:13.5px;line-height:1.5;color:#333;">
@@ -1360,6 +1397,21 @@ function maybeInstallBanner(){
 }
 document.getElementById('helpBtn').onclick = () => {
   openSheet(SOP_HTML, null);
+  /* logged-in footer: who you are + log out */
+  try{
+    const a=JSON.parse(localStorage.getItem('apexAuth')||'null');
+    if(a){
+      const lo=document.createElement('div');
+      lo.style.cssText='margin-top:14px;padding-top:12px;border-top:1px solid #e3e8f0;display:flex;align-items:center;gap:10px;';
+      lo.innerHTML=`<span style="flex:1;font-size:13px;color:#556;">Signed in as <b>${a.name}</b> (${a.role})</span>
+        <button id="logoutBtn" style="background:#fbe3e3;color:#b30000;border:none;border-radius:8px;padding:8px 13px;font-weight:bold;font-size:13px;">Log out</button>`;
+      sheet.appendChild(lo);
+      document.getElementById('logoutBtn').onclick=()=>{
+        try{ localStorage.removeItem('apexAuth'); }catch(e){}
+        location.reload();
+      };
+    }
+  }catch(e){}
   document.getElementById('installBtn2').onclick=()=>{ modal.style.display='none'; showInstall(); };
   document.getElementById('fb-send').onclick=()=>{
     const t=val('fb-text'); if(!t){ alert('Type your feedback first — and be specific!'); return; }
@@ -2172,13 +2224,107 @@ setInterval(()=>{
   }catch(e){}
 }, 45000);
 
+/* ===== team sign-in: Stephanie / Jeff manage the technician list under Admin ===== */
+const LOGIN_ENABLED = false;   // DEMO MODE — flip to true when rolling out to the field (login + admin panel go live)
+const ROLES=['Field Technician','Project Manager','Lab Technician','Reviewer','Office'];
+let TEAM=null, AUTH=null;
+try{ TEAM=JSON.parse(localStorage.getItem('apexTeam')||'null'); }catch(e){}
+if(!TEAM || !TEAM.adminPass) TEAM={ adminPass:'apex2026', techs:[] };   // default admin password — change it in the Admin panel on first use
+try{ AUTH=JSON.parse(localStorage.getItem('apexAuth')||'null'); }catch(e){}
+function saveTeam(){ try{ localStorage.setItem('apexTeam', JSON.stringify(TEAM)); }catch(e){} }
+const gate=document.getElementById('loginGate');
+function showGate(){
+  gate.style.display='block';
+  document.getElementById('lg-login').style.display='block';
+  document.getElementById('lg-admin').style.display='none';
+  document.getElementById('lg-err').textContent = TEAM.techs.length ? '' :
+    'No technicians registered on this device yet — tap Admin below to add the team.';
+}
+document.getElementById('lg-go').onclick=()=>{
+  const em=val('lg-email').toLowerCase(), pw=document.getElementById('lg-pass').value;
+  const err=document.getElementById('lg-err');
+  if(!em||!pw){ err.textContent='Enter your email and password.'; return; }
+  const t=TEAM.techs.find(t=>t.email.toLowerCase()===em && t.pass===pw);
+  if(!t){ err.textContent='No match — check with your project manager.'; return; }
+  AUTH={email:t.email,name:t.name,role:t.role,when:new Date().toISOString()};
+  try{ localStorage.setItem('apexAuth', JSON.stringify(AUTH)); }catch(e){}
+  EDITOR={name:t.name, role:t.role};
+  try{ localStorage.setItem('apexEditor', JSON.stringify(EDITOR)); }catch(e){}
+  document.getElementById('lg-pass').value='';
+  gate.style.display='none';
+  flash('Signed in as '+t.name+' ('+t.role+')');
+};
+document.getElementById('lg-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('lg-go').click(); });
+document.getElementById('lg-adminlink').onclick=()=>adminView('ask');
+function adminView(mode){
+  const box=document.getElementById('lg-admin');
+  document.getElementById('lg-login').style.display='none'; box.style.display='block';
+  if(mode==='ask'){
+    box.innerHTML=`<h2 style="margin:0 0 8px;font-size:19px;color:#21395E;">Admin</h2>
+      <label class="lgl">Admin password</label><input id="ad-pass" type="password" class="lgi">
+      <div id="ad-err" style="color:#C00000;font-size:13px;font-weight:600;min-height:18px;margin-top:7px;"></div>
+      <button id="ad-go" class="lgbtn">Open admin panel</button>
+      <div style="text-align:center;margin-top:14px;"><a id="ad-back" class="lga">&larr; back to sign-in</a></div>`;
+    document.getElementById('ad-go').onclick=()=>{
+      if(document.getElementById('ad-pass').value===TEAM.adminPass) adminView('panel');
+      else document.getElementById('ad-err').textContent='Wrong admin password.';
+    };
+    document.getElementById('ad-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('ad-go').click(); });
+    document.getElementById('ad-back').onclick=showGate;
+    return;
+  }
+  box.innerHTML=`<h2 style="margin:0 0 6px;font-size:19px;color:#21395E;">Technicians on this device</h2>
+    <div id="ad-list"></div>
+    <h3 class="lgh3">Add a technician</h3>
+    <label class="lgl">Name</label><input id="ad-n" class="lgi" placeholder="e.g. Stephanie M.">
+    <label class="lgl">Company email</label><input id="ad-e" type="email" class="lgi" autocapitalize="none" placeholder="steph@apexehs.ca">
+    <label class="lgl">Password</label><input id="ad-p" class="lgi">
+    <label class="lgl">Role</label><select id="ad-r" class="lgi">${ROLES.map(r=>`<option>${r}</option>`).join('')}</select>
+    <button id="ad-add" class="lgbtn">Add technician</button>
+    <h3 class="lgh3">Change admin password</h3>
+    <input id="ad-np" type="password" class="lgi" placeholder="new admin password">
+    <button id="ad-chg" class="lgbtn alt">Change admin password</button>
+    <div style="text-align:center;margin-top:14px;"><a id="ad-back" class="lga">&larr; back to sign-in</a></div>`;
+  const list=()=>{
+    document.getElementById('ad-list').innerHTML = TEAM.techs.length
+      ? TEAM.techs.map((t,i)=>`<div class="adrow"><b>${t.name}</b> — ${t.email}<br><span style="color:#888;font-size:12px;">${t.role}</span><button data-i="${i}" class="adx">Remove</button></div>`).join('')
+      : '<p style="color:#888;font-size:13px;margin:6px 0;">No technicians yet — add the first one below.</p>';
+    box.querySelectorAll('.adx').forEach(b=>b.onclick=()=>{
+      if(confirm('Remove '+TEAM.techs[+b.dataset.i].name+'? They will no longer be able to log in on this device.')){
+        TEAM.techs.splice(+b.dataset.i,1); saveTeam(); list();
+      }
+    });
+  };
+  list();
+  document.getElementById('ad-add').onclick=()=>{
+    const n=val('ad-n'), e=val('ad-e').toLowerCase(), p=document.getElementById('ad-p').value;
+    if(!n||!e||!p){ alert('Name, email and password are all needed.'); return; }
+    if(TEAM.techs.some(t=>t.email.toLowerCase()===e)){ alert('That email is already registered.'); return; }
+    TEAM.techs.push({name:n,email:e,pass:p,role:val('ad-r')}); saveTeam(); list();
+    document.getElementById('ad-n').value=''; document.getElementById('ad-e').value=''; document.getElementById('ad-p').value='';
+    flash('Added '+n);
+  };
+  document.getElementById('ad-chg').onclick=()=>{
+    const p=document.getElementById('ad-np').value;
+    if(p.length<4){ alert('Pick a password at least 4 characters long.'); return; }
+    TEAM.adminPass=p; saveTeam(); document.getElementById('ad-np').value='';
+    flash('Admin password changed.');
+  };
+  document.getElementById('ad-back').onclick=showGate;
+}
+
 normalize(); fit(); refreshResults();
-if(!EDITOR) setTimeout(identitySheet, 600);
+if(LOGIN_ENABLED && !AUTH){ showGate(); }
+else if(AUTH && !EDITOR){
+  EDITOR={name:AUTH.name, role:AUTH.role};
+  try{ localStorage.setItem('apexEditor', JSON.stringify(EDITOR)); }catch(e){}
+}
+if(!LOGIN_ENABLED && !EDITOR) setTimeout(identitySheet, 600);   // demo mode keeps the simple "who are you?" prompt
 /* first-open tour: offered once, after identity is set */
 try{
   if(!localStorage.getItem('apexTourDone')){
     const waitId = setInterval(()=>{
-      if(EDITOR && modal.style.display!=='block'){ clearInterval(waitId); startTour(); }
+      if(EDITOR && modal.style.display!=='block' && gate.style.display!=='block'){ clearInterval(waitId); startTour(); }
     }, 800);
   } else {
     setTimeout(maybeInstallBanner, 1600);   // returning users get the install nudge
