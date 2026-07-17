@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>APEX Field Sketch</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1C4E9E">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="APEX Sketch">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
   :root { --blue:#1C4E9E; --red:#E00000; --green:#00A040; --bg:#f4f5f7; }
   * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
@@ -11,12 +18,12 @@
   #app { display:flex; flex-direction:column; height:100%; }
 
   /* top bar */
-  #top { background:var(--blue); color:#fff; display:flex; align-items:center; gap:8px; padding:8px 10px; }
+  #top { background:var(--blue); color:#fff; display:flex; align-items:center; gap:6px; padding:7px 8px; }
   #top .logo { font-weight:bold; font-style:italic; font-size:18px; letter-spacing:1px; }
   #top .sub { font-size:10px; opacity:.85; margin-top:-2px; }
-  #topbtns { margin-left:auto; display:flex; gap:6px; }
+  #topbtns { margin-left:auto; display:flex; gap:4px; flex:0 0 auto; }
   .tbtn { background:#fff; color:var(--blue); border:none; border-radius:6px;
-          padding:7px 11px; font-weight:bold; font-size:13px; }
+          padding:7px 8px; font-weight:bold; font-size:12.5px; white-space:nowrap; }
   .tbtn.warn { background:#ffd9d9; color:#b30000; }
   /* tabs */
   #tabs { display:flex; background:#fff; border-bottom:1px solid #ccc; }
@@ -81,15 +88,14 @@
 <body>
 <div id="app">
   <div id="top">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <div style="background:#fff;border-radius:5px;padding:3px 7px;line-height:0;">
-        <svg width="76" height="36" viewBox="-14 0 640 290">
+    <div style="display:flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;">
+      <div style="background:#fff;border-radius:5px;padding:3px 6px;line-height:0;flex:0 0 auto;">
+        <svg width="60" height="30" viewBox="-14 0 640 290">
           <path d="M112,8 H592 L526,212 H46 Z" fill="#21395E"/>
           <text x="315" y="168" font-family="Arial" font-style="italic" font-weight="900" font-size="158" fill="#ffffff" text-anchor="middle">APEX</text>
           <text x="318" y="281" font-family="Arial" font-weight="900" font-size="68" fill="#1B75BC" text-anchor="middle">EHS SERVICES</text>
         </svg>
       </div>
-      <div class="sub" style="font-size:11px;font-weight:bold;">FIELD<br>SKETCH</div>
     </div>
     <div id="topbtns">
       <button class="tbtn" id="newBtn">New</button>
@@ -136,7 +142,6 @@
     <h3>Room Notes — tap a room to add or edit</h3>
     <p style="font-size:12.5px;color:#666;margin-bottom:4px;">Use the ✎ Note tool on the Draw tab, or work notes-first with no drawing at all — add rooms right here and dictate into them.</p>
     <button class="exBtn alt" id="addRoomBtn" style="padding:11px;">+ Add Room (no drawing yet)</button>
-    <button class="exBtn alt" id="autoDrawBtn" style="padding:11px;">✨ Auto-Draw from notes (BETA — always check its work)</button>
     <div id="nlist"></div>
   </div>
 
@@ -1318,13 +1323,44 @@ the map with Move) — colors update everywhere. Add your own sign-off. Status �
 <p style="font-weight:bold;color:#1C4E9E;margin:10px 0 4px;">Question or idea for the developers?</p>
 <p style="font-size:12px;color:#b30000;font-weight:bold;">Be really specific: which screen you were on, what you tapped, what you expected, and what happened instead.</p>
 <textarea id="fb-text" rows="3" placeholder="Your question / tip / bug report..."></textarea>
+<button id="installBtn2" class="exBtn" style="margin:10px 0 0;">📲 Add to Home Screen (install as an app)</button>
 <div class="btns" style="margin-top:10px;">
   <button id="fb-send" style="background:var(--blue);color:#fff;">Send feedback</button>
   <button id="tourBtn2" style="background:#fff;color:var(--blue);border:2px solid var(--blue);">Take the tour</button>
   <button id="demoBtn" style="background:#fff;color:var(--blue);border:2px solid var(--blue);">Load demo job</button>
 </div>`;
+/* ===== Add to Home Screen (PWA install) ===== */
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt=e; });
+const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent);
+function showInstall(){
+  if(isStandalone()){ flash('APEX Field Sketch is already on your home screen.'); return; }
+  if(deferredPrompt){ deferredPrompt.prompt(); deferredPrompt.userChoice.finally(()=>{ deferredPrompt=null; }); return; }
+  if(isIOS()){
+    openSheet(`<h2>📲 Add to Home Screen</h2>
+      <p style="font-size:14.5px;line-height:1.5;">On iPhone / iPad, in <b>Safari</b>:</p>
+      <p style="font-size:14.5px;line-height:1.6;">1. Tap the <b>Share</b> button ⬆️ at the bottom of the screen.<br>
+      2. Scroll down and tap <b>Add to Home Screen</b>.<br>
+      3. Tap <b>Add</b> — the APEX icon appears like a normal app, and it works offline.</p>`, null);
+  } else {
+    openSheet(`<h2>📲 Add to Home Screen</h2>
+      <p style="font-size:14.5px;line-height:1.6;">Open your browser menu (⋮ or the share icon) and choose <b>Install app</b> or <b>Add to Home screen</b>. The APEX icon will appear on your home screen and open full-screen, offline.</p>`, null);
+  }
+}
+function maybeInstallBanner(){
+  try{ if(localStorage.getItem('apexInstallDismiss')) return; }catch(e){}
+  if(isStandalone() || document.getElementById('installBar')) return;
+  const bar=document.createElement('div'); bar.id='installBar';
+  bar.style.cssText='position:fixed;left:10px;right:10px;bottom:10px;z-index:80;background:#1C4E9E;color:#fff;border-radius:12px;padding:11px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.3);font-size:13.5px;';
+  bar.innerHTML=`<img src="icon-192.png" style="width:34px;height:34px;border-radius:7px;flex:0 0 auto;"><div style="flex:1;line-height:1.35;">Add <b>APEX Field Sketch</b> to your home screen for one-tap access.</div><button id="ib-add" style="background:#fff;color:#1C4E9E;border:none;border-radius:8px;padding:8px 12px;font-weight:bold;flex:0 0 auto;">Add</button><button id="ib-x" style="background:none;border:none;color:#bcd;font-size:22px;line-height:1;flex:0 0 auto;">×</button>`;
+  document.body.appendChild(bar);
+  document.getElementById('ib-add').onclick=()=>{ bar.remove(); showInstall(); };
+  document.getElementById('ib-x').onclick=()=>{ bar.remove(); try{localStorage.setItem('apexInstallDismiss','1');}catch(e){} };
+}
 document.getElementById('helpBtn').onclick = () => {
   openSheet(SOP_HTML, null);
+  document.getElementById('installBtn2').onclick=()=>{ modal.style.display='none'; showInstall(); };
   document.getElementById('fb-send').onclick=()=>{
     const t=val('fb-text'); if(!t){ alert('Type your feedback first — and be specific!'); return; }
     location.href='mailto:codyrpadgett@gmail.com?subject='+encodeURIComponent('APEX Field Sketch feedback ('+APP_VERSION+')')+
@@ -1349,7 +1385,7 @@ function nextTour(){
   tourIdx++;
   const old=document.getElementById('tourBub'); if(old) old.remove();
   const oldD=document.getElementById('tourDim'); if(oldD) oldD.remove();
-  if(tourIdx>=TOUR_STEPS.length){ try{localStorage.setItem('apexTourDone','1');}catch(e){} return; }
+  if(tourIdx>=TOUR_STEPS.length){ try{localStorage.setItem('apexTourDone','1');}catch(e){} setTimeout(maybeInstallBanner,600); return; }
   const st=TOUR_STEPS[tourIdx];
   const el=document.querySelector(st.sel); if(!el){ nextTour(); return; }
   const rc=el.getBoundingClientRect();
@@ -1921,7 +1957,6 @@ document.getElementById('legextra').onchange=e=>{ pushUndo(); S.legendExtra=e.ta
 document.getElementById('gnotes') && (document.getElementById('gnotes').onchange=e=>{ S.gnotes=e.target.value; });
 document.getElementById('gmic').onclick=function(){ startDictation(document.getElementById('gnotes'), this); };
 document.getElementById('addRoomBtn').onclick=()=>placeRoom(null,null);
-document.getElementById('autoDrawBtn').onclick=autoDraw;
 
 /* ===== AUTO-DRAW: parse dictated room notes into a drawn first draft ===== */
 function parseSamples(txt){
@@ -2142,8 +2177,14 @@ try{
     const waitId = setInterval(()=>{
       if(EDITOR && modal.style.display!=='block'){ clearInterval(waitId); startTour(); }
     }, 800);
+  } else {
+    setTimeout(maybeInstallBanner, 1600);   // returning users get the install nudge
   }
 }catch(e){}
+/* register the service worker so the app opens offline + is installable (hosted https only) */
+if('serviceWorker' in navigator && location.protocol==='https:'){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
 </script>
 </body>
 </html>
