@@ -287,8 +287,8 @@ function recordEdit(){
   if(S.history.length>60) S.history.shift();
 }
 function pushUndo(){ undoStack.push(JSON.stringify(S)); redoStack.length = 0; if(undoStack.length>60) undoStack.shift(); recordEdit(); }
-function undo(){ if(undoStack.length){ redoStack.push(JSON.stringify(S)); S = JSON.parse(undoStack.pop()); draw(); refreshResults(); } }
-function redo(){ if(redoStack.length){ undoStack.push(JSON.stringify(S)); S = JSON.parse(redoStack.pop()); draw(); refreshResults(); } }
+function undo(){ if(undoStack.length){ redoStack.push(JSON.stringify(S)); S = JSON.parse(undoStack.pop()); draw(); refreshResults(); } else flash('Nothing to undo'); }
+function redo(){ if(redoStack.length){ undoStack.push(JSON.stringify(S)); S = JSON.parse(redoStack.pop()); draw(); refreshResults(); } else flash('Nothing to redo'); }
 
 /* sample result classification — field records WHERE, office classifies WHAT after the lab report */
 const RESULT_META = {
@@ -1327,7 +1327,7 @@ function resetJob(){
 }
 document.getElementById('saveBtn').onclick = saveMenu;
 /* ===== HELP / SOP / FEEDBACK ===== */
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v30';
 const SOP_HTML = `
 <h2>? Help — APEX Field Sketch ${APP_VERSION}</h2>
 <div style="max-height:52vh;overflow-y:auto;font-size:13.5px;line-height:1.5;color:#333;">
@@ -2202,8 +2202,19 @@ document.getElementById('jsonFile').onchange=e=>{
 /* light autosave (best-effort; app works fully without it) */
 try{
   const saved=localStorage.getItem('apexFieldSketch');
-  if(saved){ loadJobObj(JSON.parse(saved)); }
-  setInterval(()=>{ try{ localStorage.setItem('apexFieldSketch', jobJson()); }catch(e){} }, 4000);
+  if(saved){
+    loadJobObj(JSON.parse(saved));
+    /* restore the undo history too — otherwise a phone reloading a backgrounded tab
+       brings the drawing back but leaves Undo silently dead */
+    try{
+      const u=JSON.parse(localStorage.getItem('apexUndoStack')||'[]');
+      if(Array.isArray(u)) undoStack=u.filter(s=>typeof s==='string');
+    }catch(e){}
+  }
+  setInterval(()=>{ try{
+    localStorage.setItem('apexFieldSketch', jobJson());
+    localStorage.setItem('apexUndoStack', JSON.stringify(undoStack.slice(-20)));
+  }catch(e){} }, 4000);
 }catch(e){}
 
 /* ===== cloud auto-backup (Google Apps Script endpoint) ===== */

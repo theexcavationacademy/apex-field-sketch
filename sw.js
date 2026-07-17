@@ -1,5 +1,5 @@
 /* APEX Field Sketch — service worker: makes the app open offline once loaded */
-const CACHE = 'apex-field-sketch-v25';
+const CACHE = 'apex-field-sketch-v30';
 const ASSETS = ['.', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
