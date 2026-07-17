@@ -1327,7 +1327,7 @@ function resetJob(){
 }
 document.getElementById('saveBtn').onclick = saveMenu;
 /* ===== HELP / SOP / FEEDBACK ===== */
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v31';
 const SOP_HTML = `
 <h2>? Help — APEX Field Sketch ${APP_VERSION}</h2>
 <div style="max-height:52vh;overflow-y:auto;font-size:13.5px;line-height:1.5;color:#333;">
@@ -2234,6 +2234,33 @@ setInterval(()=>{
     }).catch(()=>{});
   }catch(e){}
 }, 45000);
+
+/* ===== background update check — keeps every phone current without anyone thinking about it =====
+   Checks the live index.html every few minutes for a newer APP_VERSION. When one shows up, it waits
+   for a genuinely safe moment (no drag/resize in progress, no sheet or gate open) before reloading,
+   so nobody ever loses a half-drawn wall or a note they're mid-typing. Silent no-op offline. */
+let pendingUpdate = false;
+async function checkForUpdate(){
+  try{
+    const res = await fetch('index.html', {cache:'no-store'});
+    const txt = await res.text();
+    const m = txt.match(/APP_VERSION\s*=\s*'([^']+)'/);
+    if(m && m[1] && m[1] !== APP_VERSION) pendingUpdate = true;
+  }catch(e){ /* offline or no signal on site — just try again next cycle */ }
+}
+function safeToReload(){
+  return modal.style.display !== 'block' && gate.style.display !== 'block' &&
+         pointers.size === 0 && !dragStart && !tempRect && !tempSeg && !moveTarget;
+}
+setInterval(checkForUpdate, 3*60*1000);
+setInterval(()=>{
+  if(pendingUpdate && safeToReload()){
+    pendingUpdate = false;
+    flash('Updating to the latest version…');
+    setTimeout(()=>location.reload(), 900);
+  }
+}, 10*1000);
+setTimeout(checkForUpdate, 8000);   // also catch a tab that's been sitting open since before an update
 
 /* ===== team sign-in: Stephanie / Jeff manage the technician list under Admin ===== */
 const LOGIN_ENABLED = false;   // DEMO MODE — flip to true when rolling out to the field (login + admin panel go live)
