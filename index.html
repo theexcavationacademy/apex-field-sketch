@@ -1,0 +1,2149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>APEX Field Sketch</title>
+<style>
+  :root { --blue:#1C4E9E; --red:#E00000; --green:#00A040; --bg:#f4f5f7; }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; font-family:Arial,Helvetica,sans-serif; background:var(--bg); }
+  #app { display:flex; flex-direction:column; height:100%; }
+
+  /* top bar */
+  #top { background:var(--blue); color:#fff; display:flex; align-items:center; gap:8px; padding:8px 10px; }
+  #top .logo { font-weight:bold; font-style:italic; font-size:18px; letter-spacing:1px; }
+  #top .sub { font-size:10px; opacity:.85; margin-top:-2px; }
+  #topbtns { margin-left:auto; display:flex; gap:6px; }
+  .tbtn { background:#fff; color:var(--blue); border:none; border-radius:6px;
+          padding:7px 11px; font-weight:bold; font-size:13px; }
+  .tbtn.warn { background:#ffd9d9; color:#b30000; }
+  /* tabs */
+  #tabs { display:flex; background:#fff; border-bottom:1px solid #ccc; }
+  #tabs button { flex:1; padding:9px 0; border:none; background:none; font-size:14px; font-weight:bold; color:#666; border-bottom:3px solid transparent; }
+  #tabs button.on { color:var(--blue); border-bottom-color:var(--blue); }
+
+  /* toolbar */
+  #tools { display:flex; gap:6px; padding:7px 8px; background:#fff; border-bottom:1px solid #ddd; overflow-x:auto; }
+  #tools button { flex:0 0 auto; min-width:54px; padding:7px 6px; border:1.5px solid #ccc; border-radius:8px;
+                  background:#fff; font-size:12px; font-weight:bold; color:#333; }
+  #tools button.on { border-color:var(--blue); background:#e8effc; color:var(--blue); }
+  #tools button .g { display:block; font-size:17px; line-height:1; margin-bottom:2px; }
+
+  /* canvas */
+  #wrap { position:relative; flex:1; overflow:hidden; touch-action:none; background:#fdfdfb; }
+  #cv { position:absolute; top:0; left:0; }
+  #hint { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(28,78,158,.9);
+          color:#fff; font-size:12px; padding:6px 14px; border-radius:14px; pointer-events:none; white-space:nowrap; }
+
+  /* panels (results / export) */
+  .panel { flex:1; overflow-y:auto; padding:14px; display:none; background:#fff; }
+  .panel h3 { font-size:15px; color:var(--blue); margin:10px 0 6px; }
+  .rrow { display:flex; align-items:center; gap:10px; padding:9px 6px; border-bottom:1px solid #eee; }
+  .rrow .sym { font-size:18px; width:24px; text-align:center; }
+  .rrow .lab { flex:1; font-size:14px; font-weight:bold; }
+  .rrow .mat { font-size:12px; color:#666; font-weight:normal; }
+  .rsel { border:1.5px solid #ccc; background:#fff; border-radius:10px; padding:8px 6px; font-size:13px; font-weight:bold; max-width:46%; }
+  .lg  { display:flex; align-items:baseline; gap:10px; padding:7px 2px; font-size:14px; border-bottom:1px solid #f0f0f0; }
+  .lg .lsym { width:34px; text-align:center; font-size:16px; font-weight:bold; flex:0 0 34px; }
+  .lg .lnote { font-size:11.5px; color:#888; }
+  .lg2 { padding:5px 2px 5px 12px; font-size:13.5px; color:#333; border-bottom:1px solid #f5f5f5; }
+  .ncard { padding:10px 12px; border:1.5px solid #e6e6e6; border-radius:10px; margin:8px 0; font-size:14px; }
+  .ncard b { color:var(--blue); }
+  .ncard .nt { margin-top:4px; color:#333; white-space:pre-wrap; }
+  .ncard .nt.empty { color:#aaa; font-style:italic; }
+  .sorow { padding:7px 4px; border-bottom:1px solid #eee; }
+  .thumb { height:58px; border-radius:6px; margin:6px 6px 0 0; border:1.5px solid #ddd; }
+  .micb { background:#fff; border:1.5px solid var(--blue); color:var(--blue); border-radius:8px;
+          padding:6px 12px; font-size:14px; font-weight:bold; }
+  .micb.rec { background:var(--red); border-color:var(--red); color:#fff; animation:pulse 1.1s infinite; }
+  @keyframes pulse { 50% { opacity:.55; } }
+  .exBtn { display:block; width:100%; padding:14px; margin:10px 0; border:none; border-radius:10px;
+           background:var(--blue); color:#fff; font-size:16px; font-weight:bold; }
+  .exBtn.alt { background:#fff; color:var(--blue); border:2px solid var(--blue); }
+  #preview { width:100%; border:1px solid #ccc; border-radius:6px; }
+
+  /* modal bottom sheet */
+  #modal { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; z-index:50; }
+  #sheet { position:absolute; bottom:0; left:0; right:0; background:#fff; border-radius:16px 16px 0 0;
+           padding:16px 16px 24px; max-height:80%; overflow-y:auto; }
+  #sheet h2 { font-size:16px; color:var(--blue); margin-bottom:10px; }
+  #sheet label { display:block; font-size:12px; font-weight:bold; color:#555; margin:9px 0 3px; }
+  #sheet input, #sheet select, #sheet textarea { width:100%; padding:9px; border:1.5px solid #ccc; border-radius:8px; font-size:15px; }
+  #sheet .row2 { display:flex; gap:8px; } #sheet .row2 > div { flex:1; }
+  #sheet .btns { display:flex; gap:8px; margin-top:16px; }
+  #sheet .btns button { flex:1; padding:12px; border-radius:9px; font-size:15px; font-weight:bold; border:none; }
+  #ok { background:var(--blue); color:#fff; } #cancel { background:#eee; color:#444; } #del { background:#fbe3e3; color:#b30000; flex:0 0 90px !important; }
+  .chk { display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .chk input { width:auto !important; transform:scale(1.4); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="background:#fff;border-radius:5px;padding:3px 7px;line-height:0;">
+        <svg width="76" height="36" viewBox="-14 0 640 290">
+          <path d="M112,8 H592 L526,212 H46 Z" fill="#21395E"/>
+          <text x="315" y="168" font-family="Arial" font-style="italic" font-weight="900" font-size="158" fill="#ffffff" text-anchor="middle">APEX</text>
+          <text x="318" y="281" font-family="Arial" font-weight="900" font-size="68" fill="#1B75BC" text-anchor="middle">EHS SERVICES</text>
+        </svg>
+      </div>
+      <div class="sub" style="font-size:11px;font-weight:bold;">FIELD<br>SKETCH</div>
+    </div>
+    <div id="topbtns">
+      <button class="tbtn" id="newBtn">New</button>
+      <button class="tbtn" id="saveBtn">Save</button>
+      <button class="tbtn" id="cloudBtn">☁</button>
+      <button class="tbtn" id="helpBtn">?</button>
+      <button class="tbtn" id="jobBtn">Job Info</button>
+    </div>
+  </div>
+  <div id="tabs">
+    <button data-tab="draw" class="on">Draw</button>
+    <button data-tab="notes">Notes</button>
+    <button data-tab="legend">Legend</button>
+    <button data-tab="results">Results</button>
+    <button data-tab="export">Export</button>
+  </div>
+
+  <div id="tools">
+    <button data-tool="box" class="on"><span class="g">▢</span>Room Box</button>
+    <button data-tool="hall"><span class="g">═</span>Hallway</button>
+    <button data-tool="wall"><span class="g">▭</span>Wall</button>
+    <button data-tool="door"><span class="g">◫</span>Door</button>
+    <button data-tool="stairs"><span class="g">≣</span>Stairs</button>
+    <button data-tool="asb"><span class="g">●</span>Asb.</button>
+    <button data-tool="lead"><span class="g">▲</span>Lead</button>
+    <button data-tool="oth"><span class="g">◆</span>Other</button>
+    <button data-tool="room"><span class="g">1̲</span>Room</button>
+    <button data-tool="text"><span class="g">T</span>Text</button>
+    <button data-tool="photo"><span class="g">📷</span>Photo</button>
+    <button data-tool="move"><span class="g">✥</span>Move</button>
+    <button data-tool="erase"><span class="g">⌫</span>Erase</button>
+    <button id="undoBtn"><span class="g">↶</span>Undo</button>
+    <button id="redoBtn"><span class="g">↷</span>Redo</button>
+  </div>
+
+  <div id="wrap"><canvas id="cv"></canvas><div id="hint">Drag diagonally — a whole room appears, corners auto-closed</div></div>
+
+  <div class="panel" id="p-notes">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <h3>Job Notes</h3>
+      <button class="micb" id="gmic">🎤 Dictate</button>
+    </div>
+    <textarea id="gnotes" rows="3" style="width:100%;padding:10px;border:1.5px solid #ccc;border-radius:10px;font-size:15px;font-family:inherit;" placeholder="General notes for the whole job — type, tap 🎤 Dictate, or use your keyboard's mic key"></textarea>
+    <h3>Room Notes — tap a room to add or edit</h3>
+    <p style="font-size:12.5px;color:#666;margin-bottom:4px;">Use the ✎ Note tool on the Draw tab, or work notes-first with no drawing at all — add rooms right here and dictate into them.</p>
+    <button class="exBtn alt" id="addRoomBtn" style="padding:11px;">+ Add Room (no drawing yet)</button>
+    <button class="exBtn alt" id="autoDrawBtn" style="padding:11px;">✨ Auto-Draw from notes (BETA — always check its work)</button>
+    <div id="nlist"></div>
+  </div>
+
+  <div class="panel" id="p-legend">
+    <h3>Sample Symbols</h3>
+    <div class="lg"><span class="lsym">●</span> Asbestos Sample Location — IDs S01, S02… <span class="lnote">(a-c = 3 samples per spot; vermiculite is sampled as this type)</span></div>
+    <div class="lg"><span class="lsym">▲</span> Lead Sample Location — IDs L01, L02…</div>
+    <div class="lg"><span class="lsym">◆</span> Other Contaminant Sample — IDs X01, X02… <span class="lnote">(mould, silica, mercury, PCBs, UFFI, refrigerants, radioactive, meth residue, guano, radon, arsenic)</span></div>
+
+    <h3>Result Colours</h3>
+    <div class="lg"><span class="lsym" style="color:#777">●▲</span> <b style="color:#777">Grey</b> — awaiting lab results (working view only; prints black)</div>
+    <div class="lg"><span class="lsym" style="color:#000">●▲</span> <b>Black</b> — tested, nothing found</div>
+    <div class="lg"><span class="lsym" style="color:#E00000">●</span> <b style="color:#E00000">Red</b> — asbestos positive</div>
+    <div class="lg"><span class="lsym" style="color:#00A040">▲</span> <b style="color:#00A040">Green</b> — lead positive</div>
+    <div class="lg"><span class="lsym" style="color:#E07800">●</span> <b style="color:#E07800">Orange</b> — vermiculite positive <span class="lnote">(label becomes V## — its own thing)</span></div>
+    <div class="lg"><span class="lsym" style="color:#7A00B0">◆</span> <b style="color:#7A00B0">Purple ◆</b> — other contaminant positive <span class="lnote">(label becomes ?## — placeholder until the full symbol list is set)</span></div>
+
+    <h3>Map Markings</h3>
+    <div class="lg"><span class="lsym">▬</span> Thick black line — wall</div>
+    <div class="lg"><span class="lsym">▯</span> Gap in a wall — door / opening</div>
+    <div class="lg"><span class="lsym">═</span> Double parallel lines — hallway / corridor (one grid square wide)</div>
+    <div class="lg"><span class="lsym">≣</span> Rungs between rails — stairs</div>
+    <div class="lg"><span class="lsym">📷</span> Camera in a room's corner — tap it to photograph that room</div>
+    <div class="lg"><span class="lsym" style="text-decoration:underline">1</span> Underlined number — room / location (details in Locations list)</div>
+    <div class="lg"><span class="lsym" style="color:#b36b00">SiO₂</span> Orange tag — silica / dust contamination noted in that room</div>
+    <div class="lg"><span class="lsym" style="color:#1C4E9E">✎</span> Blue pencil — this room has written notes (see Notes tab; prints on PDF page 2)</div>
+    <div class="lg"><span class="lsym">📷</span> Camera tag — this room has photos attached (view in Notes tab; print on PDF photo pages)</div>
+
+    <h3>Substrate Codes</h3>
+    <div class="lg2">DW — drywall</div>
+    <div class="lg2">DJC — drywall joint compound</div>
+    <div class="lg2">DSC — drywall seam compound</div>
+    <div class="lg2">TC/DW — textured coat on drywall</div>
+    <div class="lg2">CT — ceramic tile</div>
+    <div class="lg2">VSF — vinyl sheet flooring</div>
+    <div class="lg2">W.P. VSF — wood-pattern vinyl sheet flooring</div>
+    <div class="lg2">Plaster / Lathe — plaster on wood lathe</div>
+    <div class="lg2">W / C / F — wall / ceiling / floor</div>
+    <div class="lg2">S## a-c — asbestos sample set (3 per spot, compliance)</div>
+    <div class="lg2">L## — lead paint-chip sample</div>
+    <div class="lg2">V## — sample confirmed as vermiculite (was S##)</div>
+    <div class="lg2">X## — other-contaminant sample (contaminant chosen when stamped)</div>
+    <div class="lg2">?## — sample reclassified as a different contaminant than its original type</div>
+    <p style="font-size:12px;color:#888;margin-top:14px;">The exported drawing prints its own legend automatically — it only shows the positive-result lines for contaminants actually found on that job.</p>
+  </div>
+
+  <div class="panel" id="p-results">
+    <h3>Lab Results — classify each sample when the report comes back</h3>
+    <p style="font-size:12.5px;color:#666;margin-bottom:6px;">Grey = pending. Black = negative. Asbestos RED, lead GREEN, vermiculite ORANGE, other PURPLE — colors update on the drawing instantly. You can also tap a sample on the drawing to classify it there.</p>
+    <div id="rlist"></div>
+  </div>
+
+  <div class="panel" id="p-export">
+    <h3>Job Status</h3>
+    <select id="jstatus" style="width:100%;padding:11px;border:1.5px solid #ccc;border-radius:9px;font-size:15px;font-weight:bold;">
+      <option>Draft</option><option>Field Complete</option><option>Lab Results Entered</option><option>Reviewed — Final</option>
+    </select>
+    <h3>Legend — extra lines (editable)</h3>
+    <textarea id="legextra" rows="2" style="width:100%;padding:9px;border:1.5px solid #ccc;border-radius:9px;font-size:14px;font-family:inherit;" placeholder="Add your own legend lines, one per line — they print in the LEGEND box"></textarea>
+    <h3>Edit History</h3>
+    <div id="histlist" style="font-size:13.5px;color:#444;"></div>
+    <h3>Sign-off</h3>
+    <div id="solist" style="font-size:14px;"></div>
+    <button class="exBtn alt" id="soBtn" style="margin-top:4px;">Add Sign-off</button>
+    <h3>Finished Drawing Preview</h3>
+    <canvas id="preview"></canvas>
+    <button class="exBtn" id="shareBtn">Share / Email Drawing + Data</button>
+    <button class="exBtn alt" id="dlPng">Download Drawing (PNG)</button>
+    <button class="exBtn alt" id="dlPdf">Download Drawing (PDF)</button>
+    <button class="exBtn alt" id="dlDocx">Photo Report (Word) — photos + room descriptions</button>
+    <button class="exBtn alt" id="dlJson">Download Data File (JSON)</button>
+    <button class="exBtn alt" id="loadJson">Open Data File (office / lab results)</button>
+    <input type="file" id="jsonFile" accept=".json" style="display:none">
+    <input type="file" id="photoFile" accept="image/*" capture="environment" multiple style="display:none">
+  </div>
+</div>
+
+<div id="modal"><div id="sheet"></div></div>
+
+<script>
+"use strict";
+/* ================= state ================= */
+const CELL = 28;                       // world px per grid cell
+let S = {                              // the job document
+  header: { project:"", address:"", client:"", tech:"", pm:"", bd:"", scope:"", date: new Date().toLocaleDateString('en-CA') },
+  walls: [], doors: [], rooms: [], samples: [], texts: [], stairs: []
+};
+let view = { x: -40, y: -40, z: 1 };
+let tool = "box", undoStack = [];
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const wrap = document.getElementById('wrap');
+
+let redoStack = [];
+/* every edit is stamped into the job's history — you can always see who touched it last */
+let EDITOR = null;
+try{ EDITOR = JSON.parse(localStorage.getItem('apexEditor')||'null'); }catch(e){}
+function recordEdit(){
+  if(!EDITOR) return;
+  const when = new Date().toLocaleString('en-CA',{dateStyle:'medium',timeStyle:'short'});
+  const dayKey = new Date().toDateString();
+  S.lastEdit = { name:EDITOR.name, role:EDITOR.role, when };
+  if(!Array.isArray(S.history)) S.history=[];
+  const last = S.history[S.history.length-1];
+  if(last && last.name===EDITOR.name && last.dayKey===dayKey){ last.when = when; }
+  else S.history.push({ name:EDITOR.name, role:EDITOR.role, when, dayKey });
+  if(S.history.length>60) S.history.shift();
+}
+function pushUndo(){ undoStack.push(JSON.stringify(S)); redoStack.length = 0; if(undoStack.length>60) undoStack.shift(); recordEdit(); }
+function undo(){ if(undoStack.length){ redoStack.push(JSON.stringify(S)); S = JSON.parse(undoStack.pop()); draw(); refreshResults(); } }
+function redo(){ if(redoStack.length){ undoStack.push(JSON.stringify(S)); S = JSON.parse(redoStack.pop()); draw(); refreshResults(); } }
+
+/* sample result classification — field records WHERE, office classifies WHAT after the lab report */
+const RESULT_META = {
+  pending:     { label:'Pending (awaiting lab)', c:'#777777', ce:'#000000' },
+  negative:    { label:'Negative — nothing found', c:'#000000', ce:'#000000' },
+  asbestos:    { label:'Asbestos +', c:'#E00000', ce:'#E00000' },
+  lead:        { label:'Lead +', c:'#00A040', ce:'#00A040' },
+  vermiculite: { label:'Vermiculite +', c:'#E07800', ce:'#E07800' },
+  other:       { label:'Other contaminant +', c:'#7A00B0', ce:'#7A00B0' }
+};
+function resultColor(s, forExport){ const m = RESULT_META[s.result] || RESULT_META.pending; return forExport ? m.ce : m.c; }
+/* display identity: "other contaminant" replaces the type letter with ? (L01 -> ?01) — display only,
+   the original ID is kept underneath so reclassifying restores it */
+function dispId(s){
+  let base = s.id;
+  if(s.result==='other' && s.type!=='O') base = '?' + s.id.replace(/^[A-Za-z]+/,'');
+  else if(s.result==='vermiculite')      base = 'V' + s.id.replace(/^[A-Za-z]+/,'');
+  return base + (s.suffix||'');
+}
+function symChar(s){
+  if(s.type==='O' || s.result==='other') return '◆';
+  return s.type==='A' ? '●' : '▲';
+}
+/* a sample can only have results valid for its type: ● asbestos, ▲ lead, ◆ other contaminant */
+function validResults(s){
+  if(s.type==='O') return ['pending','negative','other'];
+  return s.type === 'A' ? ['pending','negative','asbestos','vermiculite','other']
+                        : ['pending','negative','lead','other'];
+}
+/* most common residential "other" contaminants (beyond asbestos & lead) */
+const OTHER_CONTAMS = ["Mould","Silica (SiO2)","Mercury","PCBs (ballasts/caulking)","UFFI (foam insulation)",
+  "Refrigerants / ODS","Radioactive (smoke detectors)","Meth / drug residue","Guano / droppings",
+  "Radon","Arsenic (treated wood)","Other"];
+function normalize(){  // migrate older saves
+  for(const s of S.samples){
+    if(!s.result) s.result = s.positive === true ? (s.type==='A' ? 'asbestos' : 'lead') : 'pending';
+  }
+  for(const r of S.rooms){ if(r.notes===undefined) r.notes=''; if(!Array.isArray(r.photos)) r.photos=[]; }
+  if(S.gnotes===undefined) S.gnotes='';
+  if(S.header.pm===undefined) S.header.pm='';
+  if(!Array.isArray(S.signoffs)) S.signoffs=[];
+  if(!Array.isArray(S.history)) S.history=[];
+  if(!Array.isArray(S.stairs)) S.stairs=[];
+  if(S.legendExtra===undefined) S.legendExtra='';
+  if(!S.status) S.status='Draft';
+}
+
+/* ================= geometry helpers ================= */
+const snap = v => Math.round(v / CELL) * CELL;   // everything lands on the grid lines, like real graph paper
+function toWorld(px,py){ return { x: px/view.z + view.x, y: py/view.z + view.y }; }
+
+/* smart snapping: grab nearby wall endpoints, then wall lines, so corners always close */
+function nearestEndpoint(p, tol){
+  let best=null, bd=tol;
+  for(const w of S.walls){
+    for(const q of [{x:w.x1,y:w.y1},{x:w.x2,y:w.y2}]){
+      const d=Math.hypot(p.x-q.x,p.y-q.y);
+      if(d<bd){bd=d;best=q;}
+    }
+  }
+  return best;
+}
+function projectOnWalls(p, tol){
+  let best=null, bd=tol;
+  for(const w of S.walls){
+    const dx=w.x2-w.x1, dy=w.y2-w.y1, L2=dx*dx+dy*dy; if(!L2) continue;
+    let t=((p.x-w.x1)*dx+(p.y-w.y1)*dy)/L2; t=Math.max(0,Math.min(1,t));
+    const q={x:w.x1+t*dx, y:w.y1+t*dy};
+    const d=Math.hypot(p.x-q.x,p.y-q.y);
+    if(d<bd){bd=d;best=q;}
+  }
+  return best;
+}
+function smartSnap(p){ return nearestEndpoint(p, CELL*0.8) || projectOnWalls(p, CELL*0.6) || p; }
+
+/* corridor corner joining: where a new hallway meets a perpendicular wall, endpoints fuse at the
+   true corner (both walls moved to meet exactly) or get trimmed/extended to the wall line. */
+const isH = w => w.y1 === w.y2;
+function joinCorners(newWalls){
+  for(const w of newWalls){
+    for(const [kx,ky] of [['x1','y1'],['x2','y2']]){
+      const ex = w[kx], ey = w[ky];
+      // pass 1: fuse with a nearby endpoint of a PERPENDICULAR existing wall
+      let best=null, bd=CELL*1.6;
+      for(const o of S.walls){
+        if(o===w || newWalls.includes(o) || isH(o)===isH(w)) continue;
+        for(const [ox,oy] of [['x1','y1'],['x2','y2']]){
+          const d = Math.hypot(ex-o[ox], ey-o[oy]);
+          if(d<bd){ bd=d; best={o,ox,oy}; }
+        }
+      }
+      if(best){
+        const cx = isH(w) ? best.o.x1 : w.x1;   // vertical wall supplies x
+        const cy = isH(w) ? w.y1 : best.o.y1;   // horizontal wall supplies y
+        w[kx]=cx; w[ky]=cy;
+        best.o[best.ox]=cx; best.o[best.oy]=cy;
+        continue;
+      }
+      // pass 2: trim/extend endpoint to a perpendicular wall LINE it nearly meets (e.g. a room wall)
+      for(const o of S.walls){
+        if(o===w || newWalls.includes(o) || isH(o)===isH(w)) continue;
+        if(isH(w)){
+          const ox=o.x1, ylo=Math.min(o.y1,o.y2), yhi=Math.max(o.y1,o.y2);
+          if(Math.abs(ex-ox)<=CELL*1.2 && ey>=ylo-1 && ey<=yhi+1){ w[kx]=ox; break; }
+        } else {
+          const oy=o.y1, xlo=Math.min(o.x1,o.x2), xhi=Math.max(o.x1,o.x2);
+          if(Math.abs(ey-oy)<=CELL*1.2 && ex>=xlo-1 && ex<=xhi+1){ w[ky]=oy; break; }
+        }
+      }
+    }
+  }
+}
+
+/* ================= canvas sizing ================= */
+function fit(){ cv.width = wrap.clientWidth * devicePixelRatio; cv.height = wrap.clientHeight * devicePixelRatio;
+  cv.style.width = wrap.clientWidth+'px'; cv.style.height = wrap.clientHeight+'px'; draw(); }
+window.addEventListener('resize', fit);
+
+/* ================= drawing (screen) ================= */
+let tempSeg = null, tempRect = null;
+function draw(){
+  const w = cv.width, h = cv.height;
+  ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle = '#fdfdfb'; ctx.fillRect(0,0,w,h);
+  ctx.setTransform(devicePixelRatio*view.z, 0, 0, devicePixelRatio*view.z, -view.x*devicePixelRatio*view.z, -view.y*devicePixelRatio*view.z);
+  // grid
+  const x0 = Math.floor(view.x/CELL)*CELL, y0 = Math.floor(view.y/CELL)*CELL;
+  const xe = view.x + wrap.clientWidth/view.z, ye = view.y + wrap.clientHeight/view.z;
+  ctx.strokeStyle = '#cdd8ea'; ctx.lineWidth = 1/view.z;
+  ctx.beginPath();
+  for(let x=x0; x<=xe; x+=CELL){ ctx.moveTo(x, y0); ctx.lineTo(x, ye); }
+  for(let y=y0; y<=ye; y+=CELL){ ctx.moveTo(x0, y); ctx.lineTo(xe, y); }
+  ctx.stroke();
+  paintContent(ctx, 1, false);
+  if(tempSeg){ ctx.strokeStyle = '#1C4E9E'; ctx.lineWidth = 5; ctx.beginPath();
+    if(tool==='hall'){
+      const horiz = Math.abs(tempSeg.x2-tempSeg.x1) >= Math.abs(tempSeg.y2-tempSeg.y1);
+      if(horiz){ ctx.moveTo(tempSeg.x1,tempSeg.y1); ctx.lineTo(tempSeg.x2,tempSeg.y2);
+                 ctx.moveTo(tempSeg.x1,tempSeg.y1+CELL); ctx.lineTo(tempSeg.x2,tempSeg.y2+CELL); }
+      else     { ctx.moveTo(tempSeg.x1,tempSeg.y1); ctx.lineTo(tempSeg.x2,tempSeg.y2);
+                 ctx.moveTo(tempSeg.x1+CELL,tempSeg.y1); ctx.lineTo(tempSeg.x2+CELL,tempSeg.y2); }
+    } else { ctx.moveTo(tempSeg.x1, tempSeg.y1); ctx.lineTo(tempSeg.x2, tempSeg.y2); }
+    ctx.stroke(); }
+  if(tempRect){ ctx.strokeStyle = '#1C4E9E'; ctx.lineWidth = 5;
+    ctx.strokeRect(Math.min(tempRect.x1,tempRect.x2), Math.min(tempRect.y1,tempRect.y2),
+                   Math.abs(tempRect.x2-tempRect.x1), Math.abs(tempRect.y2-tempRect.y1)); }
+}
+
+/* ===== smart room-label placement =====
+   Find the room's enclosing walls by ray-casting from the tap point, then pick the candidate
+   spot inside that rectangle farthest from any sample/text so the label stays legible. */
+function rectAt(p){
+  // ray-cast with door-gap tolerance: a wall counts even if the ray passes within a cell of its span
+  const M = CELL*0.95;
+  let xl=null, xr=null, yt=null, yb=null;
+  for(const w of S.walls){
+    if(w.x1===w.x2){ // vertical
+      const lo=Math.min(w.y1,w.y2), hi=Math.max(w.y1,w.y2);
+      if(p.y>=lo-M && p.y<=hi+M){
+        if(w.x1 <= p.x-2 && (xl===null || w.x1>xl)) xl=w.x1;
+        if(w.x1 >= p.x+2 && (xr===null || w.x1<xr)) xr=w.x1;
+      }
+    } else {         // horizontal
+      const lo=Math.min(w.x1,w.x2), hi=Math.max(w.x1,w.x2);
+      if(p.x>=lo-M && p.x<=hi+M){
+        if(w.y1 <= p.y-2 && (yt===null || w.y1>yt)) yt=w.y1;
+        if(w.y1 >= p.y+2 && (yb===null || w.y1<yb)) yb=w.y1;
+      }
+    }
+  }
+  if(xl===null||xr===null||yt===null||yb===null) return null;
+  if(xr-xl < CELL*2 || yb-yt < CELL*2) return null;
+  return {xl,xr,yt,yb};
+}
+function roomRect(r){ return rectAt(r); }
+function smartLabelPos(r, c, sc){
+  const rect = roomRect(r);
+  if(!rect) return {x:r.x, y:r.y};
+  // measure the FULL label block (number + name + finishes) so all of it stays inside the walls
+  c.font = `bold ${15*sc}px Arial`; let bw = c.measureText(r.num).width;
+  const fin = [r.w?'W:'+r.w:'', r.c?'C:'+r.c:'', r.f?'F:'+r.f:''].filter(Boolean).join('  ');
+  if(r.name){ c.font = `bold ${11*sc}px Arial`; bw = Math.max(bw, c.measureText(r.name).width); }
+  if(fin){ c.font = `${10*sc}px Arial`; bw = Math.max(bw, c.measureText(fin).width); }
+  const top = 14*sc, bot = (r.silica ? 48 : (fin ? 35 : (r.name ? 22 : 8)))*sc;
+  let xmin = rect.xl + bw/2 + 7, xmax = rect.xr - bw/2 - 7;
+  let ymin = rect.yt + top + 6,  ymax = rect.yb - bot - 4;
+  if(xmin > xmax) xmin = xmax = (rect.xl + rect.xr)/2;
+  if(ymin > ymax) ymin = ymax = (rect.yt + rect.yb)/2 - 6*sc;
+  const clampX = v => Math.max(xmin, Math.min(xmax, v));
+  const clampY = v => Math.max(ymin, Math.min(ymax, v));
+  const obstacles = S.samples.concat(S.texts).filter(o =>
+    o.x>rect.xl-CELL && o.x<rect.xr+CELL && o.y>rect.yt-CELL && o.y<rect.yb+CELL);
+  const cands = [];
+  for(const fy of [0.5, 0.32, 0.68, 0.2, 0.8])
+    for(const fx of [0.5, 0.3, 0.7, 0.18, 0.82])
+      cands.push({ x: clampX(rect.xl + (rect.xr-rect.xl)*fx),
+                   y: clampY(rect.yt + (rect.yb-rect.yt)*fy) });
+  if(!obstacles.length) return cands[0];
+  let best=cands[0], bs=-1;
+  for(const cd of cands){
+    let m=1e9;
+    for(const o of obstacles) m=Math.min(m, Math.hypot(cd.x-o.x, cd.y-o.y));
+    if(m>bs+0.5){ bs=m; best=cd; }
+  }
+  return best;
+}
+
+/* paint job content onto any ctx (screen or export); sc = extra scale for lineweights */
+function paintContent(c, sc, forExport){
+  // walls
+  c.strokeStyle = '#000'; c.lineCap = 'square';
+  c.lineWidth = 6*sc;
+  c.beginPath();
+  for(const wl of S.walls){ c.moveTo(wl.x1,wl.y1); c.lineTo(wl.x2,wl.y2); }
+  c.stroke();
+  // doors: gaps painted background colour
+  c.strokeStyle = forExport ? '#ffffff' : '#fdfdfb'; c.lineWidth = 9*sc;
+  c.beginPath();
+  for(const d of S.doors){ c.moveTo(d.x1,d.y1); c.lineTo(d.x2,d.y2); }
+  c.stroke();
+  // stairs: rails + rungs along the run
+  c.strokeStyle = '#000'; c.lineWidth = 2*sc;
+  for(const st of (S.stairs||[])){
+    const horiz = Math.abs(st.x2-st.x1) >= Math.abs(st.y2-st.y1);
+    const o = CELL/2;
+    c.beginPath();
+    if(horiz){
+      c.moveTo(st.x1, st.y1-o); c.lineTo(st.x2, st.y1-o);
+      c.moveTo(st.x1, st.y1+o); c.lineTo(st.x2, st.y1+o);
+      const n = Math.max(2, Math.floor(Math.abs(st.x2-st.x1)/(CELL/2)));
+      for(let i=0;i<=n;i++){ const x=st.x1+(st.x2-st.x1)*i/n; c.moveTo(x, st.y1-o); c.lineTo(x, st.y1+o); }
+    } else {
+      c.moveTo(st.x1-o, st.y1); c.lineTo(st.x1-o, st.y2);
+      c.moveTo(st.x1+o, st.y1); c.lineTo(st.x1+o, st.y2);
+      const n = Math.max(2, Math.floor(Math.abs(st.y2-st.y1)/(CELL/2)));
+      for(let i=0;i<=n;i++){ const y=st.y1+(st.y2-st.y1)*i/n; c.moveTo(st.x1-o, y); c.lineTo(st.x1+o, y); }
+    }
+    c.stroke();
+  }
+  // rooms — samples stay where taken; the label block finds the clearest open spot in the room
+  for(const r of S.rooms){
+    if(r.x==null){ r._lx=undefined; r._ly=undefined; r._camx=undefined; continue; }   // notes-only room
+    const p = smartLabelPos(r, c, sc);
+    r._lx = p.x; r._ly = p.y;
+    // camera icon pinned to the room's upper-right corner (working view only)
+    if(!forExport){
+      const rect = roomRect(r);
+      if(rect){
+        r._camx = rect.xr - CELL; r._camy = rect.yt + CELL;   // 2x2-grid-square target
+        c.font = `${34*sc}px Arial`; c.textAlign='center';
+        c.globalAlpha = 0.85;
+        c.fillText('📷', r._camx, r._camy + 12*sc);
+        c.globalAlpha = 1;
+      } else { r._camx = undefined; }
+    }
+    c.fillStyle = '#000'; c.font = `bold ${15*sc}px Arial`; c.textAlign = 'center';
+    c.fillText(r.num, p.x, p.y);
+    const wdt = c.measureText(r.num).width;
+    c.fillRect(p.x - wdt/2, p.y + 3*sc, wdt, 1.6*sc);
+    if(!forExport){   // working view shows what you typed; final drawing keeps house style (details go to the locations list)
+      if(r.name){ c.font = `bold ${11*sc}px Arial`; c.fillText(r.name, p.x, p.y + 17*sc); }
+      const fin = [r.w?'W:'+r.w:'', r.c?'C:'+r.c:'', r.f?'F:'+r.f:''].filter(Boolean).join('  ');
+      if(fin){ c.fillStyle = '#555'; c.font = `${10*sc}px Arial`; c.fillText(fin, p.x, p.y + 30*sc); }
+      if(r.silica){ c.fillStyle = '#b36b00'; c.font = `bold ${10*sc}px Arial`; c.fillText('SiO₂', p.x, p.y + 43*sc); }
+      if(r.notes){ c.fillStyle = '#1C4E9E'; c.font = `bold ${11*sc}px Arial`; c.fillText('✎', p.x + wdt/2 + 11*sc, p.y); }
+      if(r.photos && r.photos.length){ c.fillStyle = '#1C4E9E'; c.font = `${10*sc}px Arial`; c.fillText('📷'+r.photos.length, p.x + wdt/2 + 10*sc, p.y + 13*sc); }
+    }
+  }
+  // samples — an "other contaminant" result overrides label (?##) and symbol (◆ diamond placeholder)
+  for(const s of S.samples){
+    const col = resultColor(s, forExport);
+    c.fillStyle = col;
+    if(s.type==='O' || s.result==='other'){
+      c.beginPath(); c.moveTo(s.x, s.y-7.5*sc); c.lineTo(s.x+7*sc, s.y); c.lineTo(s.x, s.y+7.5*sc); c.lineTo(s.x-7*sc, s.y); c.closePath(); c.fill();
+    } else if(s.type==='A'){ c.beginPath(); c.arc(s.x, s.y, 6*sc, 0, 7); c.fill(); }
+    else { c.beginPath(); c.moveTo(s.x, s.y-7*sc); c.lineTo(s.x-6.5*sc, s.y+5*sc); c.lineTo(s.x+6.5*sc, s.y+5*sc); c.closePath(); c.fill(); }
+    c.font = `bold ${12.5*sc}px Arial`;
+    // label picks a spot that STAYS INSIDE the room: left / right / above / below the symbol
+    const lbl = dispId(s), tw = c.measureText(lbl).width, lw = tw + 16*sc;
+    const rect = rectAt(s);
+    let mode = 'left';
+    if(rect){
+      const ls = s.x - rect.xl, rs = rect.xr - s.x;
+      if(ls >= lw + 6) mode = 'left';
+      else if(rs >= lw + 6) mode = 'right';
+      else mode = (s.y - rect.yt >= 24*sc) ? 'above' : 'below';
+      // clamp above/below horizontally so the centered text stays inside the walls
+      if(mode==='above' || mode==='below'){
+        var cxl = Math.max(rect.xl + tw/2 + 6, Math.min(rect.xr - tw/2 - 6, s.x));
+      }
+    } else {
+      // no enclosing room found: flip away from any nearby wall
+      for(const w of S.walls){
+        if(w.x1!==w.x2) continue;
+        const lo=Math.min(w.y1,w.y2), hi=Math.max(w.y1,w.y2);
+        if(s.y < lo-6 || s.y > hi+6) continue;
+        if(w.x1 < s.x-2 && s.x-w.x1 < lw) mode = 'right';
+      }
+    }
+    if(mode==='left'){ c.textAlign='right'; c.fillText(lbl, s.x - 10*sc, s.y + 4*sc); }
+    else if(mode==='right'){ c.textAlign='left'; c.fillText(lbl, s.x + 10*sc, s.y + 4*sc); }
+    else if(mode==='above'){ c.textAlign='center'; c.fillText(lbl, cxl, s.y - 12*sc); }
+    else { c.textAlign='center'; c.fillText(lbl, cxl, s.y + 20*sc); }
+  }
+  c.textAlign = 'left';
+  // texts
+  c.fillStyle = '#000'; c.textAlign = 'left';
+  for(const t of S.texts){ c.font = `bold ${13*sc}px Arial`; c.fillText(t.str, t.x, t.y); }
+  c.textAlign = 'left';
+}
+
+/* ================= pointer handling ================= */
+let pointers = new Map(), pinch = null, dragStart = null, moveTarget = null, downScr = null, movedFar = false;
+wrap.addEventListener('pointerdown', e => {
+  wrap.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.offsetX, y:e.offsetY});
+  if(pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    pinch = { d: Math.hypot(a.x-b.x, a.y-b.y), cx:(a.x+b.x)/2, cy:(a.y+b.y)/2, view:{...view} };
+    tempSeg = null; dragStart = null;
+  } else if(pointers.size === 1){
+    downScr = {x:e.offsetX, y:e.offsetY}; movedFar = false;
+    const wpt = toWorld(e.offsetX, e.offsetY);
+    if(tool==='wall' || tool==='door' || tool==='box' || tool==='hall' || tool==='stairs'){ dragStart = { x: snap(wpt.x), y: snap(wpt.y) }; }
+    else if(tool==='move'){
+      dragStart = wpt; moveTarget = null;
+      // 1. stamps first (samples / room labels / text)
+      for(const [kind,tol] of [['sample',22],['room',24],['text',22]]){
+        const o = nearestOfKind(wpt, kind, tol/view.z);
+        if(o){ moveTarget = {kind, obj:o}; break; }
+      }
+      // 2. corners: drag resizes both directions
+      if(!moveTarget){
+        const cr = cornerAt(wpt, 16/view.z);
+        if(cr) moveTarget = {kind:'corner', ...cr, attH:computeAttach(cr.wH), attV:computeAttach(cr.wV)};
+      }
+      // 3. edges: perpendicular resize; doors/stairs translate
+      if(!moveTarget){
+        const st = nearest(wpt, 14/view.z);
+        if(st && st.kind==='wall'){ moveTarget = st; moveTarget.att = computeAttach(st.obj); }
+        else if(st) moveTarget = st;
+      }
+      // 4. inside a room: drag the whole room
+      if(!moveTarget) moveTarget = roomMoveTarget(wpt);
+      if(moveTarget) pushUndo();
+    }
+  }
+});
+wrap.addEventListener('pointermove', e => {
+  if(!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, {x:e.offsetX, y:e.offsetY});
+  if(downScr && Math.hypot(e.offsetX-downScr.x, e.offsetY-downScr.y) > 9) movedFar = true;
+  if(pinch && pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    const d = Math.hypot(a.x-b.x, a.y-b.y), cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
+    const z = Math.min(3, Math.max(.35, pinch.view.z * d/pinch.d));
+    view.z = z;
+    view.x = pinch.view.x + pinch.cx/pinch.view.z - cx/z;
+    view.y = pinch.view.y + pinch.cy/pinch.view.z - cy/z;
+    draw(); return;
+  }
+  const wpt = toWorld(e.offsetX, e.offsetY);
+  if(dragStart && (tool==='wall'||tool==='door'||tool==='hall'||tool==='stairs')){
+    let x2 = snap(wpt.x), y2 = snap(wpt.y);
+    if(Math.abs(x2-dragStart.x) > Math.abs(y2-dragStart.y)) y2 = dragStart.y; else x2 = dragStart.x; // ortho
+    tempSeg = { x1:dragStart.x, y1:dragStart.y, x2, y2 };
+    draw();
+  } else if(dragStart && tool==='box'){
+    tempRect = { x1:dragStart.x, y1:dragStart.y, x2:snap(wpt.x), y2:snap(wpt.y) };
+    draw();
+  } else if(tool==='move' && moveTarget && dragStart){
+    const dx = wpt.x - dragStart.x, dy = wpt.y - dragStart.y; dragStart = wpt;
+    if(moveTarget.kind==='wall'){
+      applyWallDelta(moveTarget.obj, moveTarget.att, isH(moveTarget.obj) ? dy : dx);
+    } else if(moveTarget.kind==='corner'){
+      applyWallDelta(moveTarget.wH, moveTarget.attH, dy);
+      applyWallDelta(moveTarget.wV, moveTarget.attV, dx);
+    } else if(moveTarget.kind==='roomMove'){
+      for(const w of moveTarget.walls){ w.x1+=dx; w.y1+=dy; w.x2+=dx; w.y2+=dy; }
+      for(const d of moveTarget.doors){ d.x1+=dx; d.y1+=dy; d.x2+=dx; d.y2+=dy; }
+      for(const s of moveTarget.segs){ s.x1+=dx; s.y1+=dy; s.x2+=dx; s.y2+=dy; }
+      for(const o of moveTarget.items){ o.x+=dx; o.y+=dy; }
+    } else shift(moveTarget, dx, dy);
+    draw();
+  } else if(tool==='move' && !pointers.size){
+    // hover: change the cursor like standard drawing apps
+    let cur='default';
+    if(nearestOfKind(wpt,'sample',22/view.z)||nearestOfKind(wpt,'room',24/view.z)||nearestOfKind(wpt,'text',22/view.z)) cur='grab';
+    else { const cr=cornerAt(wpt,16/view.z);
+      if(cr){ const leftEnd = cr.cx===Math.min(cr.wH.x1,cr.wH.x2), topEnd = cr.cy===Math.min(cr.wV.y1,cr.wV.y2);
+        cur = (leftEnd===topEnd) ? 'nwse-resize' : 'nesw-resize'; }
+      else { const st=nearest(wpt,14/view.z);
+        if(st && st.kind==='wall') cur = isH(st.obj) ? 'ns-resize' : 'ew-resize';
+        else if(st) cur='grab';
+        else if(rectAt(wpt)) cur='move';
+      } }
+    cv.style.cursor = cur;
+  }
+});
+wrap.addEventListener('pointerup', e => {
+  pointers.delete(e.pointerId);
+  if(pointers.size < 2) pinch = null;
+  const wpt = toWorld(e.offsetX, e.offsetY);
+  if(tempRect && tool==='box'){
+    const x1=Math.min(tempRect.x1,tempRect.x2), x2=Math.max(tempRect.x1,tempRect.x2);
+    const y1=Math.min(tempRect.y1,tempRect.y2), y2=Math.max(tempRect.y1,tempRect.y2);
+    if(x2-x1 >= CELL && y2-y1 >= CELL){
+      pushUndo();
+      // snap the whole box to nearby existing corners so rooms butt together cleanly
+      const c1=smartSnap({x:x1,y:y1}), c2=smartSnap({x:x2,y:y2});
+      S.walls.push({x1:c1.x,y1:c1.y,x2:c2.x,y2:c1.y},{x1:c2.x,y1:c1.y,x2:c2.x,y2:c2.y},
+                   {x1:c2.x,y1:c2.y,x2:c1.x,y2:c2.y},{x1:c1.x,y1:c2.y,x2:c1.x,y2:c1.y});
+    }
+    tempRect = null; dragStart = null; draw(); return;
+  }
+  if(tempSeg && tool==='hall'){
+    if(Math.hypot(tempSeg.x2-tempSeg.x1, tempSeg.y2-tempSeg.y1) >= CELL){
+      pushUndo();
+      const horiz = Math.abs(tempSeg.x2-tempSeg.x1) >= Math.abs(tempSeg.y2-tempSeg.y1);
+      let s1, s2;   // dragged line = one corridor wall; twin wall exactly one grid square over
+      if(horiz){ s1={x1:tempSeg.x1,y1:tempSeg.y1,x2:tempSeg.x2,y2:tempSeg.y2};
+                 s2={x1:tempSeg.x1,y1:tempSeg.y1+CELL,x2:tempSeg.x2,y2:tempSeg.y2+CELL}; }
+      else     { s1={x1:tempSeg.x1,y1:tempSeg.y1,x2:tempSeg.x2,y2:tempSeg.y2};
+                 s2={x1:tempSeg.x1+CELL,y1:tempSeg.y1,x2:tempSeg.x2+CELL,y2:tempSeg.y2}; }
+      S.walls.push(s1, s2);
+      carveCorridor(s1, s2, horiz);   // cut pass-through walls & form corners FIRST
+      joinCorners([s1, s2]);          // then weld remaining endpoints — no crossing lines
+    }
+    tempSeg = null; dragStart = null; draw(); return;
+  }
+  if(tempSeg && tool==='stairs'){
+    if(Math.hypot(tempSeg.x2-tempSeg.x1, tempSeg.y2-tempSeg.y1) >= CELL){
+      pushUndo(); S.stairs.push({...tempSeg});
+    }
+    tempSeg = null; dragStart = null; draw(); return;
+  }
+  if(tempSeg && (tool==='wall'||tool==='door')){
+    if(Math.hypot(tempSeg.x2-tempSeg.x1, tempSeg.y2-tempSeg.y1) >= CELL/2){
+      pushUndo();
+      if(tool==='wall'){
+        const a=smartSnap({x:tempSeg.x1,y:tempSeg.y1}), b=smartSnap({x:tempSeg.x2,y:tempSeg.y2});
+        S.walls.push({x1:a.x,y1:a.y,x2:b.x,y2:b.y});
+      } else {
+        S.doors.push({...tempSeg});
+      }
+      tempSeg = null; dragStart = null; draw(); return;
+    }
+    tempSeg = null;
+  }
+  // Wall tool TAP: add ONE grid-square of wall on the nearest grid line (mirror of the one-square eraser)
+  if(tool==='wall' && !movedFar){
+    const gy = snap(wpt.y), gx = snap(wpt.x);
+    pushUndo();
+    if(Math.abs(wpt.y-gy) <= Math.abs(wpt.x-gx)){
+      const x0 = Math.floor(wpt.x/CELL)*CELL;
+      S.walls.push({x1:x0, y1:gy, x2:x0+CELL, y2:gy});
+    } else {
+      const y0 = Math.floor(wpt.y/CELL)*CELL;
+      S.walls.push({x1:gx, y1:y0, x2:gx, y2:y0+CELL});
+    }
+    dragStart = null; draw(); return;
+  }
+  if(tool==='door'){ dragStart = null; }
+  if(tool==='move' && moveTarget && movedFar){
+    if(moveTarget.kind==='wall'){
+      const w=moveTarget.obj;
+      applyWallDelta(w, moveTarget.att, magnetDelta(isH(w)?w.y1:w.x1, isH(w), new Set([w])));
+      snapWallGroup(moveTarget); draw();
+    } else if(moveTarget.kind==='corner'){
+      applyWallDelta(moveTarget.wH, moveTarget.attH, magnetDelta(moveTarget.wH.y1, true, new Set([moveTarget.wH])));
+      applyWallDelta(moveTarget.wV, moveTarget.attV, magnetDelta(moveTarget.wV.x1, false, new Set([moveTarget.wV])));
+      snapWallGroup({obj:moveTarget.wH, att:moveTarget.attH});
+      snapWallGroup({obj:moveTarget.wV, att:moveTarget.attV});
+      draw();
+    } else if(moveTarget.kind==='roomMove'){
+      const mv=new Set(moveTarget.walls);
+      const hs=moveTarget.walls.filter(isH), vs=moveTarget.walls.filter(w=>!isH(w));
+      let dy=0, dxm=0;
+      for(const w of hs){ const d=magnetDelta(w.y1,true,mv); if(d && (!dy || Math.abs(d)<Math.abs(dy))) dy=d; }
+      for(const w of vs){ const d=magnetDelta(w.x1,false,mv); if(d && (!dxm || Math.abs(d)<Math.abs(dxm))) dxm=d; }
+      for(const w of moveTarget.walls){ w.x1+=dxm; w.y1+=dy; w.x2+=dxm; w.y2+=dy; }
+      for(const d of moveTarget.doors){ d.x1+=dxm; d.y1+=dy; d.x2+=dxm; d.y2+=dy; }
+      for(const s of moveTarget.segs){ s.x1+=dxm; s.y1+=dy; s.x2+=dxm; s.y2+=dy; }
+      for(const o of moveTarget.items){ o.x+=dxm; o.y+=dy; }
+      for(const w of moveTarget.walls){ w.x1=snap(w.x1); w.y1=snap(w.y1); w.x2=snap(w.x2); w.y2=snap(w.y2); }
+      for(const d of moveTarget.doors){ d.x1=snap(d.x1); d.y1=snap(d.y1); d.x2=snap(d.x2); d.y2=snap(d.y2); }
+      for(const s of moveTarget.segs){ s.x1=snap(s.x1); s.y1=snap(s.y1); s.x2=snap(s.x2); s.y2=snap(s.y2); }
+      draw();
+    }
+  }
+  dragStart = null; moveTarget = null;
+  if(pinch) return;
+  // camera icon tap: works with ANY tool — attach a photo to that room
+  if(!movedFar){
+    for(const r of S.rooms){
+      if(r._camx===undefined) continue;
+      if(Math.hypot(wpt.x-r._camx, wpt.y-r._camy) < CELL){
+        pendingPhotoRoom = r; document.getElementById('photoFile').click(); return;
+      }
+    }
+  }
+  // Move tool: a TAP (no drag) on a sample opens the quick colour/result picker
+  if(tool==='move' && !movedFar){
+    const s = nearestOfKind(wpt, 'sample', 28/view.z);
+    if(s){ quickResult(s); return; }
+  }
+  // tap tools — tapping an existing item re-opens its form to edit
+  if(tool==='room'){
+    const t = nearestOfKind(wpt, 'room', 30/view.z);
+    if(t) editRoom(t); else placeRoom(snap(wpt.x), snap(wpt.y));
+  }
+  else if(tool==='asb' || tool==='lead' || tool==='oth'){
+    const t = nearestOfKind(wpt, 'sample', 26/view.z);
+    if(t) editSample(t); else placeSample(tool==='asb'?'A':(tool==='lead'?'L':'O'), snap(wpt.x), snap(wpt.y));
+  }
+  else if(tool==='text'){
+    const t = nearestOfKind(wpt, 'text', 26/view.z);
+    if(t) editText(t); else placeText(snap(wpt.x), snap(wpt.y));
+  }
+  else if(tool==='note'){
+    const r = findRoomAt(wpt);
+    if(r) openNoteSheet(r); else flash('Tap inside a room that has a number stamp');
+  }
+  else if(tool==='photo'){
+    const r = findRoomAt(wpt);
+    if(r){ pendingPhotoRoom = r; document.getElementById('photoFile').click(); }
+    else flash('Tap inside a room that has a number stamp');
+  }
+  else if(tool==='erase'){ eraseAt(wpt); }
+});
+
+function nearestOfKind(p, kind, r){
+  const pools = { room:S.rooms, sample:S.samples, text:S.texts };
+  let best=null, bd=r;
+  for(const o of pools[kind]){
+    if(o.x==null && o._lx===undefined) continue;   // notes-only rooms aren't on the canvas
+    const ox = (kind==='room' && o._lx!==undefined) ? o._lx : o.x;
+    const oy = (kind==='room' && o._ly!==undefined) ? o._ly : o.y;
+    const d = Math.hypot(p.x-ox, p.y-oy);
+    if(d<bd){ bd=d; best=o; }
+  }
+  return best;
+}
+function flash(msg){
+  const h=document.getElementById('hint'); const old=h.textContent;
+  h.textContent=msg; setTimeout(()=>{ h.textContent=old; }, 2600);
+}
+function nearest(p, r){
+  let best=null, bd=r;
+  const test=(obj,x,y,kind)=>{ const d=Math.hypot(p.x-x,p.y-y); if(d<bd){bd=d;best={kind,obj};} };
+  S.rooms.forEach(o=>test(o, o._lx!==undefined?o._lx:o.x, o._ly!==undefined?o._ly:o.y, 'room'));
+  S.samples.forEach(o=>test(o,o.x,o.y,'sample'));
+  S.texts.forEach(o=>test(o,o.x,o.y,'text'));
+  const segTest=(arr,kind)=>arr.forEach(o=>{ const d=distToSeg(p,o); if(d<bd){bd=d;best={kind,obj:o};} });
+  segTest(S.walls,'wall'); segTest(S.doors,'door'); segTest(S.stairs||[],'stair');
+  return best;
+}
+/* find everything attached to a wall: perpendicular walls sharing its corners + doors riding on it */
+function computeAttach(w){
+  const att = { ends:[], doors:[] };
+  const ends = [[w.x1,w.y1],[w.x2,w.y2]];
+  for(const o of S.walls){
+    if(o===w || isH(o)===isH(w)) continue;
+    for(const [kx,ky] of [['x1','y1'],['x2','y2']])
+      for(const [ex,ey] of ends)
+        if(Math.hypot(o[kx]-ex, o[ky]-ey) < 3){ att.ends.push({o,kx,ky}); }
+  }
+  for(const d of S.doors){
+    if((d.y1===d.y2) !== isH(w)) continue;
+    if(isH(w)){
+      if(Math.abs(d.y1-w.y1)<5 && Math.min(d.x1,d.x2)>=Math.min(w.x1,w.x2)-CELL && Math.max(d.x1,d.x2)<=Math.max(w.x1,w.x2)+CELL) att.doors.push(d);
+    } else {
+      if(Math.abs(d.x1-w.x1)<5 && Math.min(d.y1,d.y2)>=Math.min(w.y1,w.y2)-CELL && Math.max(d.y1,d.y2)<=Math.max(w.y1,w.y2)+CELL) att.doors.push(d);
+    }
+  }
+  return att;
+}
+/* apply a perpendicular delta to a wall and everything attached at its corners */
+function applyWallDelta(w, att, d){
+  att = att || {ends:[],doors:[]};
+  if(isH(w)){ w.y1+=d; w.y2+=d; att.ends.forEach(a=>{ a.o[a.ky]+=d; }); att.doors.forEach(x=>{ x.y1+=d; x.y2+=d; }); }
+  else { w.x1+=d; w.x2+=d; att.ends.forEach(a=>{ a.o[a.kx]+=d; }); att.doors.forEach(x=>{ x.x1+=d; x.x2+=d; }); }
+}
+/* magnetic snap: if a wall lands within ~1 grid square of a parallel wall, snap flush to it */
+function magnetDelta(coord, horiz, excludeSet){
+  let best = 0, bd = CELL*0.92;
+  for(const o of S.walls){
+    if(excludeSet && excludeSet.has(o)) continue;
+    if(isH(o) !== horiz) continue;
+    const d = (horiz ? o.y1 : o.x1) - coord;
+    if(d !== 0 && Math.abs(d) <= bd){ bd = Math.abs(d); best = d; }
+  }
+  return best;
+}
+/* find a corner where a horizontal and vertical wall meet */
+function cornerAt(p, tol){
+  for(const wH of S.walls){
+    if(!isH(wH)) continue;
+    for(const [hx,hy] of [[wH.x1,wH.y1],[wH.x2,wH.y2]]){
+      if(Math.hypot(p.x-hx, p.y-hy) > tol) continue;
+      for(const wV of S.walls){
+        if(isH(wV)) continue;
+        for(const [vx,vy] of [[wV.x1,wV.y1],[wV.x2,wV.y2]])
+          if(Math.hypot(hx-vx, hy-vy) < 3) return {cx:hx, cy:hy, wH, wV};
+      }
+    }
+  }
+  return null;
+}
+/* everything that makes up the room under this point, for whole-room dragging */
+function roomMoveTarget(p){
+  const rect = rectAt(p); if(!rect) return null;
+  const on=(v,t)=>Math.abs(v-t)<3;
+  const walls=[];
+  for(const w of S.walls){
+    if(isH(w)){ if((on(w.y1,rect.yt)||on(w.y1,rect.yb)) && Math.min(w.x1,w.x2)>=rect.xl-3 && Math.max(w.x1,w.x2)<=rect.xr+3) walls.push(w); }
+    else { if((on(w.x1,rect.xl)||on(w.x1,rect.xr)) && Math.min(w.y1,w.y2)>=rect.yt-3 && Math.max(w.y1,w.y2)<=rect.yb+3) walls.push(w); }
+  }
+  if(!walls.length) return null;
+  const doors=[];
+  for(const d of S.doors){
+    for(const w of walls){
+      if((d.y1===d.y2)!==isH(w)) continue;
+      if(isH(w) ? (Math.abs(d.y1-w.y1)<5 && Math.min(d.x1,d.x2)>=Math.min(w.x1,w.x2)-CELL && Math.max(d.x1,d.x2)<=Math.max(w.x1,w.x2)+CELL)
+                : (Math.abs(d.x1-w.x1)<5 && Math.min(d.y1,d.y2)>=Math.min(w.y1,w.y2)-CELL && Math.max(d.y1,d.y2)<=Math.max(w.y1,w.y2)+CELL)){
+        doors.push(d); break;
+      }
+    }
+  }
+  const inside=(o)=>o.x>rect.xl && o.x<rect.xr && o.y>rect.yt && o.y<rect.yb;
+  const items=[...S.rooms.filter(r=>r.x!=null && inside(r)), ...S.samples.filter(inside), ...S.texts.filter(inside)];
+  const segs=(S.stairs||[]).filter(st=>st.x1>rect.xl-3&&st.x2<rect.xr+3&&st.y1>rect.yt-3&&st.y2<rect.yb+3);
+  return {kind:'roomMove', walls, doors, segs, items};
+}
+function snapWallGroup(t){
+  const w=t.obj;
+  w.x1=snap(w.x1); w.y1=snap(w.y1); w.x2=snap(w.x2); w.y2=snap(w.y2);
+  (t.att?.ends||[]).forEach(a=>{ a.o[a.kx]=snap(a.o[a.kx]); a.o[a.ky]=snap(a.o[a.ky]); });
+  (t.att?.doors||[]).forEach(d=>{ d.x1=snap(d.x1); d.y1=snap(d.y1); d.x2=snap(d.x2); d.y2=snap(d.y2); });
+}
+function shift(t, dx, dy){
+  const o=t.obj;
+  if(t.kind==='wall'||t.kind==='door'||t.kind==='stair'){ o.x1+=dx;o.y1+=dy;o.x2+=dx;o.y2+=dy; }
+  else { o.x+=dx; o.y+=dy; }
+}
+function eraseItem(t){
+  const pools={wall:S.walls,door:S.doors,room:S.rooms,sample:S.samples,text:S.texts};
+  const arr=pools[t.kind]; arr.splice(arr.indexOf(t.obj),1);
+}
+
+/* hallway carve-through: any wall the corridor band crosses gets cut to corridor width,
+   so dragging a hallway through a set of rooms leaves clean openings — no manual erasing */
+function carveCorridor(s1, s2, horiz){
+  const keep = [], add = [];
+  if(horiz){
+    const yLo=Math.min(s1.y1,s2.y1), yHi=Math.max(s1.y1,s2.y1);
+    const xLo=Math.min(s1.x1,s1.x2,s2.x1,s2.x2), xHi=Math.max(s1.x1,s1.x2,s2.x1,s2.x2);
+    for(const o of S.walls){
+      if(o===s1||o===s2||isH(o)){ keep.push(o); continue; }
+      const oy1=Math.min(o.y1,o.y2), oy2=Math.max(o.y1,o.y2);
+      // only walls crossing the corridor INTERIOR (not at its ends) are affected
+      if(o.x1>xLo+1 && o.x1<xHi-1 && oy1<yHi-1 && oy2>yLo+1){
+        const topPiece = oy1 <= yLo-CELL*0.5, botPiece = oy2 >= yHi+CELL*0.5;
+        if(topPiece) add.push({x1:o.x1,y1:oy1,x2:o.x1,y2:yLo});
+        if(botPiece) add.push({x1:o.x1,y1:yHi,x2:o.x1,y2:oy2});
+        if(topPiece !== botPiece){
+          // corner join: trim the corridor wall on the side the crossing wall extends toward
+          const target = topPiece ? (s1.y1===yLo ? s1 : s2) : (s1.y1===yHi ? s1 : s2);
+          const k=o.x1;
+          const lo=Math.min(target.x1,target.x2), hi=Math.max(target.x1,target.x2);
+          if(Math.abs(k-lo) < Math.abs(k-hi)){ if(target.x1<target.x2) target.x1=k; else target.x2=k; }
+          else { if(target.x1<target.x2) target.x2=k; else target.x1=k; }
+        }
+      } else keep.push(o);
+    }
+  } else {
+    const xLo=Math.min(s1.x1,s2.x1), xHi=Math.max(s1.x1,s2.x1);
+    const yLo=Math.min(s1.y1,s1.y2,s2.y1,s2.y2), yHi=Math.max(s1.y1,s1.y2,s2.y1,s2.y2);
+    for(const o of S.walls){
+      if(o===s1||o===s2||!isH(o)){ keep.push(o); continue; }
+      const ox1=Math.min(o.x1,o.x2), ox2=Math.max(o.x1,o.x2);
+      if(o.y1>yLo+1 && o.y1<yHi-1 && ox1<xHi-1 && ox2>xLo+1){
+        const leftPiece = ox1 <= xLo-CELL*0.5, rightPiece = ox2 >= xHi+CELL*0.5;
+        if(leftPiece) add.push({x1:ox1,y1:o.y1,x2:xLo,y2:o.y1});
+        if(rightPiece) add.push({x1:xHi,y1:o.y1,x2:ox2,y2:o.y1});
+        if(leftPiece !== rightPiece){
+          const target = leftPiece ? (s1.x1===xLo ? s1 : s2) : (s1.x1===xHi ? s1 : s2);
+          const k=o.y1;
+          const lo=Math.min(target.y1,target.y2), hi=Math.max(target.y1,target.y2);
+          if(Math.abs(k-lo) < Math.abs(k-hi)){ if(target.y1<target.y2) target.y1=k; else target.y2=k; }
+          else { if(target.y1<target.y2) target.y2=k; else target.y1=k; }
+        }
+      } else keep.push(o);
+    }
+  }
+  S.walls = keep.concat(add);
+}
+
+/* graph-paper eraser: stamps delete whole; walls lose only the one-grid-cell chunk you tapped */
+function distToSeg(p,w){
+  const dx=w.x2-w.x1, dy=w.y2-w.y1, L2=dx*dx+dy*dy;
+  if(!L2) return Math.hypot(p.x-w.x1,p.y-w.y1);
+  let t=((p.x-w.x1)*dx+(p.y-w.y1)*dy)/L2; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(p.x-(w.x1+t*dx), p.y-(w.y1+t*dy));
+}
+function eraseAt(p){
+  const tol=22/view.z;
+  let cand=null, bd=tol;
+  for(const [arr,kind] of [[S.rooms,'room'],[S.samples,'sample'],[S.texts,'text']])
+    for(const o of arr){
+      const ox = (kind==='room' && o._lx!==undefined) ? o._lx : o.x;
+      const oy = (kind==='room' && o._ly!==undefined) ? o._ly : o.y;
+      const d=Math.hypot(p.x-ox,p.y-oy); if(d<bd){bd=d;cand={kind,obj:o};}
+    }
+  if(cand && cand.kind==='room'){
+    const r=cand.obj;
+    const extras = (r.notes || (r.photos&&r.photos.length)) ? ' Its notes and photos will be removed with it.' : '';
+    openSheet(`<h2>⚠️ Erase room identifier?</h2>
+      <p style="font-size:14.5px;margin:8px 0;">Are you sure you want to erase room identifier
+      <b>${r.num}${r.name?' · '+r.name:''}</b>?${extras}</p>`,
+      null,
+      ()=>{ pushUndo();
+        (r.photos||[]).forEach(ph=>delete PHOTOS[ph.pid]);
+        S.rooms.splice(S.rooms.indexOf(r),1);
+        draw(); refreshNotes(); refreshResults(); flash(`Room ${r.num} erased`); });
+    return;
+  }
+  if(cand){ pushUndo(); eraseItem(cand); draw(); refreshResults(); return; }
+  bd=tol; let dc=null;
+  for(const o of S.doors){ const d=distToSeg(p,o); if(d<bd){bd=d;dc=o;} }
+  if(dc){ pushUndo(); S.doors.splice(S.doors.indexOf(dc),1); draw(); return; }
+  bd=tol; let sc2=null;
+  for(const o of (S.stairs||[])){ const d=distToSeg(p,o); if(d<bd+CELL/2){bd=d;sc2=o;} }
+  if(sc2){ pushUndo(); S.stairs.splice(S.stairs.indexOf(sc2),1); draw(); return; }
+  bd=tol; let wc=null;
+  for(const o of S.walls){ const d=distToSeg(p,o); if(d<bd){bd=d;wc=o;} }
+  if(wc){ pushUndo(); chunkErase(wc,p); draw(); }
+}
+function chunkErase(w,p){
+  S.walls.splice(S.walls.indexOf(w),1);
+  if(isH(w)){
+    const x1=Math.min(w.x1,w.x2), x2=Math.max(w.x1,w.x2);
+    let c1=Math.floor(p.x/CELL)*CELL, c2=c1+CELL;
+    c1=Math.max(c1,x1); c2=Math.min(c2,x2);
+    if(c1-x1 >= CELL*0.5) S.walls.push({x1, y1:w.y1, x2:c1, y2:w.y1});
+    if(x2-c2 >= CELL*0.5) S.walls.push({x1:c2, y1:w.y1, x2, y2:w.y1});
+  } else {
+    const y1=Math.min(w.y1,w.y2), y2=Math.max(w.y1,w.y2);
+    let c1=Math.floor(p.y/CELL)*CELL, c2=c1+CELL;
+    c1=Math.max(c1,y1); c2=Math.min(c2,y2);
+    if(c1-y1 >= CELL*0.5) S.walls.push({x1:w.x1, y1, x2:w.x1, y2:c1});
+    if(y2-c2 >= CELL*0.5) S.walls.push({x1:w.x1, y1:c2, x2:w.x1, y2});
+  }
+}
+
+/* ================= stamps & forms ================= */
+const SUBSTRATES = ["","DW","DJC","TC/DW","Plaster","Plaster/Lathe","CT","VSF","W.P. VSF","Wood Panel","Concrete","Lino","Carpet","Other"];
+function selHtml(id,val){ return `<select id="${id}">${SUBSTRATES.map(s=>`<option ${s===val?'selected':''}>${s}</option>`).join('')}</select>`; }
+/* multi-surface groups: a room can have several wall/ceiling/floor finishes — "+ add another" grows the list */
+function selPlain(val){ return `<select class="surfSel" style="margin-top:4px;">${SUBSTRATES.map(s=>`<option ${s===val?'selected':''}>${s}</option>`).join('')}</select>`; }
+function surfGroup(key,label,cur){
+  const vals=(cur||'').split(' + ').filter(Boolean); if(!vals.length) vals.push('');
+  return `<div><label>${label}</label><div id="grp-${key}">${vals.map(v=>selPlain(v)).join('')}</div>
+    <button type="button" class="addSurf" data-grp="grp-${key}" style="font-size:12px;color:#1C4E9E;background:none;border:none;font-weight:bold;padding:5px 0;">+ add another</button></div>`;
+}
+function wireSurf(){
+  sheet.querySelectorAll('.addSurf').forEach(b=>b.onclick=()=>{
+    document.getElementById(b.dataset.grp).insertAdjacentHTML('beforeend', selPlain(''));
+  });
+}
+function surfVal(key){
+  return [...sheet.querySelectorAll(`#grp-${key} select`)].map(s=>s.value.trim()).filter(Boolean).join(' + ');
+}
+
+function placeRoom(x,y){   // x,y may be null: a notes-only room (no drawing yet)
+  const num = S.rooms.length ? Math.max(...S.rooms.map(r=>+r.num))+1 : 1;
+  openSheet(`<h2>Room / Location ${num}</h2>
+    <label>Room name</label><input id="f-name" placeholder="e.g. Basement Kitchen">
+    <div class="row2">
+      ${surfGroup('w','Wall (W)','')}
+      ${surfGroup('c','Ceiling (C)','')}
+      ${surfGroup('f','Floor (F)','')}
+    </div>
+    <div class="chk"><input type="checkbox" id="f-sio2"><label style="margin:0">SiO&#8322; / dust contamination evident in this room</label></div>`,
+    ()=>{ pushUndo();
+      S.rooms.push({x,y,num:String(num),name:val('f-name'),w:surfVal('w'),c:surfVal('c'),f:surfVal('f'),silica:document.getElementById('f-sio2').checked,notes:'',photos:[]});
+      draw(); refreshNotes();
+      flash(x==null ? `Room ${num} added (notes-only) — it's in the locations list and PDF` :
+        `Room ${num} saved — name & finishes show on screen and in the final locations list`); });
+  wireSurf();
+}
+function editRoom(r){
+  openSheet(`<h2>Edit Room / Location ${r.num}</h2>
+    <div class="row2"><div><label>Number</label><input id="f-num" value="${r.num}"></div>
+    <div><label>Room name</label><input id="f-name" value="${r.name||''}"></div></div>
+    <div class="row2">
+      ${surfGroup('w','Wall (W)',r.w)}
+      ${surfGroup('c','Ceiling (C)',r.c)}
+      ${surfGroup('f','Floor (F)',r.f)}
+    </div>
+    <div class="chk"><input type="checkbox" id="f-sio2" ${r.silica?'checked':''}><label style="margin:0">SiO&#8322; / dust contamination evident in this room</label></div>`,
+    ()=>{ pushUndo();
+      r.num=val('f-num'); r.name=val('f-name'); r.w=surfVal('w'); r.c=surfVal('c'); r.f=surfVal('f');
+      r.silica=document.getElementById('f-sio2').checked; draw(); refreshNotes(); },
+    ()=>{ pushUndo(); (r.photos||[]).forEach(ph=>delete PHOTOS[ph.pid]); S.rooms.splice(S.rooms.indexOf(r),1); draw(); refreshNotes(); });
+  wireSurf();
+}
+function editSample(s){
+  openSheet(`<h2>Edit ${s.type==='A'?'● Asbestos':(s.type==='L'?'▲ Lead':'◆ Other contaminant')} sample</h2>
+    ${s.type==='O' ? `<label>Contaminant</label>${contamSel('f-con',s.contam||'')}` : ''}
+    <div class="row2">
+      <div><label>Sample ID</label><input id="f-id" value="${s.id}"></div>
+      <div><label>Suffix</label><input id="f-suf" value="${s.suffix||''}"></div>
+    </div>
+    <label>Material / substrate</label>${selHtml('f-mat',s.material)}
+    <label>Colour / description</label><input id="f-desc" value="${s.desc||''}">
+    <label>Lab result</label><select id="f-res">${resultOptions(s.result||'pending', s)}</select>`,
+    ()=>{ pushUndo(); s.id=val('f-id'); s.suffix=val('f-suf'); s.material=val('f-mat'); s.desc=val('f-desc');
+      if(s.type==='O') s.contam=val('f-con');
+      s.result=val('f-res'); draw(); refreshResults(); },
+    ()=>{ pushUndo(); S.samples.splice(S.samples.indexOf(s),1); draw(); refreshResults(); });
+}
+/* ===== photos: stored in PHOTOS (outside undo snapshots), referenced by rooms, travel in the job file ===== */
+let PHOTOS = {}, pendingPhotoRoom = null, photoSeq = 1;
+function jobJson(){ return JSON.stringify({...S, _photos: PHOTOS}, null, 1); }
+function loadJobObj(o){ PHOTOS = o._photos || {}; delete o._photos; S = o; normalize(); }
+const loadImg = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.src = src; });
+document.getElementById('photoFile').onchange = e => {
+  const room = pendingPhotoRoom; if(!room) return;
+  for(const f of e.target.files){
+    const url = URL.createObjectURL(f);
+    const im = new Image();
+    im.onload = () => {
+      const sc = Math.min(1, 1280 / Math.max(im.width, im.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      const pid = 'p' + Date.now() + '_' + (photoSeq++);
+      PHOTOS[pid] = c.toDataURL('image/jpeg', 0.8);
+      if(!Array.isArray(room.photos)) room.photos = [];
+      room.photos.push({ pid, caption:'', ts: new Date().toLocaleString('en-CA',{dateStyle:'medium',timeStyle:'short'}) });
+      URL.revokeObjectURL(url);
+      draw(); refreshNotes();
+      flash(`Photo saved to Room ${room.num}${room.name ? ' · ' + room.name : ''}`);
+    };
+    im.src = url;
+  }
+  e.target.value = '';
+};
+function photoSheet(r, ph){
+  openSheet(`<h2>📷 Room ${r.num}${r.name ? ' · ' + r.name : ''}</h2>
+    <img src="${PHOTOS[ph.pid]}" style="width:100%;border-radius:8px;">
+    <p style="font-size:11.5px;color:#888;margin-top:4px;">${ph.ts||''}</p>
+    <label>Caption — what is this photo showing?</label>
+    <input id="f-cap" value="${(ph.caption||'').replace(/"/g,'&quot;')}" placeholder="e.g. S02b sample spot, debris behind toilet">`,
+    ()=>{ ph.caption = val('f-cap'); refreshNotes(); },
+    ()=>{ const i = r.photos.indexOf(ph); if(i >= 0){ r.photos.splice(i,1); delete PHOTOS[ph.pid]; }
+      draw(); refreshNotes(); });
+}
+function findRoomAt(p){
+  for(const r of S.rooms){
+    if(r.x==null) continue;
+    const rect = roomRect(r);
+    if(rect && p.x>rect.xl && p.x<rect.xr && p.y>rect.yt && p.y<rect.yb) return r;
+  }
+  return nearestOfKind(p, 'room', 60/view.z);
+}
+/* in-app dictation (Web Speech API); falls back to the keyboard mic key where unsupported */
+let REC=null;
+function startDictation(el, btn){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ alert("This browser doesn't do in-app dictation — tap the microphone key on your phone keyboard instead."); return; }
+  if(REC){ try{REC.stop();}catch(e){} return; }
+  REC = new SR(); REC.continuous = true; REC.interimResults = false; REC.lang = 'en-CA';
+  btn.classList.add('rec'); btn.textContent = '🎤 Listening… tap to stop';
+  REC.onresult = ev => {
+    for(let i=ev.resultIndex; i<ev.results.length; i++){
+      if(ev.results[i].isFinal){
+        const t = ev.results[i][0].transcript.trim();
+        el.value += (el.value && !/\s$/.test(el.value) ? ' ' : '') + t;
+        el.dispatchEvent(new Event('change'));
+      }
+    }
+  };
+  const done = () => { btn.classList.remove('rec'); btn.textContent='🎤 Dictate'; REC=null; };
+  REC.onend = done; REC.onerror = done;
+  REC.start();
+}
+function openNoteSheet(r){
+  openSheet(`<h2>✎ Notes — Room ${r.num}${r.name?' · '+r.name:''}</h2>
+    <button class="micb" id="rmic" type="button" style="margin:4px 0 8px;">🎤 Dictate</button>
+    <textarea id="f-rn" rows="6" placeholder="Type your findings, tap 🎤 Dictate, or use your keyboard's mic key...">${(r.notes||'').replace(/</g,'&lt;')}</textarea>`,
+    ()=>{ pushUndo(); r.notes=document.getElementById('f-rn').value.trim(); draw(); refreshNotes(); });
+  document.getElementById('rmic').onclick=function(){ startDictation(document.getElementById('f-rn'), this); };
+}
+function refreshNotes(){
+  const g=document.getElementById('gnotes'); if(g) g.value=S.gnotes||'';
+  const el=document.getElementById('nlist'); if(!el) return;
+  el.innerHTML='';
+  const rooms=[...S.rooms].sort((a,b)=>+a.num-+b.num);
+  if(!rooms.length){ el.innerHTML='<p style="color:#888;font-size:14px;padding:14px 0;">No rooms stamped yet — number rooms on the Draw tab first.</p>'; return; }
+  for(const r of rooms){
+    const d=document.createElement('div'); d.className='ncard';
+    const fin=[r.w?'W:'+r.w:'',r.c?'C:'+r.c:'',r.f?'F:'+r.f:''].filter(Boolean).join('  ');
+    d.innerHTML=`<b>${r.num}. ${r.name||'—'}</b> <span style="color:#888;font-size:12px;">${fin}</span>${r.silica?' <span style="color:#b36b00;font-weight:bold;font-size:12px;">SiO₂</span>':''}${r.x==null?' <span style="color:#999;font-size:11px;font-style:italic;">(not on drawing)</span>':''}
+      <button class="ncEdit" style="float:right;font-size:12px;font-weight:bold;color:#1C4E9E;background:#eef3fb;border:none;border-radius:7px;padding:5px 9px;">✎ Edit room</button>
+      <div class="nt ${r.notes?'':'empty'}">${r.notes?r.notes.replace(/</g,'&lt;'):'— tap to add notes —'}</div>
+      <div>${(r.photos||[]).filter(p=>PHOTOS[p.pid]).map(p=>`<img class="thumb" data-pid="${p.pid}" src="${PHOTOS[p.pid]}">`).join('')}</div>`;
+    d.onclick=()=>openNoteSheet(r);
+    d.querySelector('.ncEdit').onclick=(ev)=>{ ev.stopPropagation(); editRoom(r); };
+    d.querySelectorAll('.thumb').forEach(t=>{
+      t.onclick=(ev)=>{ ev.stopPropagation();
+        const ph=r.photos.find(p=>p.pid===t.dataset.pid); if(ph) photoSheet(r, ph); };
+    });
+    el.appendChild(d);
+  }
+}
+function identitySheet(){
+  openSheet(`<h2>Who's using this device?</h2>
+    <p style="font-size:13.5px;color:#555;margin:6px 0;">Your name gets stamped into each job's edit history so everyone can see who touched it last. Asked once per device.</p>
+    <label>Name / initials</label><input id="f-en" value="${EDITOR?EDITOR.name:''}">
+    <label>Role</label><select id="f-er">${['Field Technician','Project Manager','Lab Technician','Reviewer','Office'].map(r=>`<option ${EDITOR&&EDITOR.role===r?'selected':''}>${r}</option>`).join('')}</select>`,
+    ()=>{ const n=val('f-en'); if(!n) return;
+      EDITOR={name:n, role:val('f-er')};
+      try{ localStorage.setItem('apexEditor', JSON.stringify(EDITOR)); }catch(e){}
+      flash(`Edits will be recorded as ${EDITOR.name} (${EDITOR.role})`); });
+}
+function refreshHistory(){
+  const el=document.getElementById('histlist'); if(!el) return;
+  const h=S.history||[];
+  el.innerHTML = h.length
+    ? `<div class="sorow"><b>Last edited by ${S.lastEdit?S.lastEdit.name+' ('+S.lastEdit.role+') — '+S.lastEdit.when:'—'}</b></div>`
+      + [...h].reverse().slice(0,8).map(e=>`<div class="sorow">${e.name} — ${e.role} — ${e.when}</div>`).join('')
+    : '<p style="color:#888;">No edits recorded yet.</p>';
+}
+function refreshSignoffs(){
+  const el=document.getElementById('solist'); if(!el) return;
+  el.innerHTML = S.signoffs.length
+    ? S.signoffs.map(s=>`<div class="sorow"><b>${s.name}</b> — ${s.role} — ${s.date}</div>`).join('')
+    : '<p style="color:#888;">Not signed yet. The field technician signs first; each later editor (manager, lab tech) adds their own sign-off.</p>';
+}
+function addSignoff(){
+  const roles=['Field Technician','Project Manager','Lab Technician','Reviewer','Other'];
+  const sug = S.signoffs.length ? '' : (S.header.tech||'');
+  openSheet(`<h2>Add Sign-off</h2>
+    <label>Name / initials</label><input id="f-son" value="${sug}">
+    <label>Role</label><select id="f-sor">${roles.map((r,i)=>`<option ${!S.signoffs.length&&!i?'selected':''}>${r}</option>`).join('')}</select>`,
+    ()=>{ const n=val('f-son'); if(!n) return;
+      pushUndo();
+      S.signoffs.push({name:n, role:val('f-sor'), date:new Date().toLocaleString('en-CA',{dateStyle:'medium',timeStyle:'short'})});
+      refreshSignoffs(); renderPreview(); });
+}
+function editText(t){
+  openSheet(`<h2>Edit text</h2><label>Text</label><input id="f-t" value="${t.str.replace(/"/g,'&quot;')}">`,
+    ()=>{ pushUndo(); t.str=val('f-t'); draw(); },
+    ()=>{ pushUndo(); S.texts.splice(S.texts.indexOf(t),1); draw(); });
+}
+function contamSel(id,cur){ return `<select id="${id}">${OTHER_CONTAMS.map(c=>`<option ${c===cur?'selected':''}>${c}</option>`).join('')}</select>`; }
+function placeSample(type,x,y){
+  const pre = type==='A'?'S':(type==='L'?'L':'X');
+  const n = S.samples.filter(s=>s.type===type).map(s=>+s.id.replace(/^[A-Za-z]+/,'')).reduce((a,b)=>Math.max(a,b),0)+1;
+  const id = pre + String(n).padStart(2,'0');
+  const title = type==='A'?'● Asbestos':(type==='L'?'▲ Lead':'◆ Other contaminant');
+  openSheet(`<h2>${title} sample ${id}</h2>
+    ${type==='O' ? `<label>Contaminant</label>${contamSel('f-con','')}` : ''}
+    <div class="row2">
+      <div><label>Sample ID</label><input id="f-id" value="${id}"></div>
+      <div><label>Suffix</label><input id="f-suf" value="${type==='A'?'a-c':''}" placeholder="a-c / a / b ..."></div>
+    </div>
+    <label>Material / substrate</label>${selHtml('f-mat','')}
+    <label>Colour / description (optional)</label><input id="f-desc" placeholder="e.g. light grey">`,
+    ()=>{ pushUndo();
+      S.samples.push({x,y,type,id:val('f-id'),suffix:val('f-suf'),material:val('f-mat'),desc:val('f-desc'),
+        contam:type==='O'?val('f-con'):'',result:'pending'});
+      draw(); refreshResults(); });
+}
+function placeText(x,y){
+  openSheet(`<h2>Text note</h2><label>Text</label><input id="f-t" placeholder="e.g. Unit 3, roof, to below">`,
+    ()=>{ if(val('f-t')){ pushUndo(); S.texts.push({x,y,str:val('f-t')}); draw(); } });
+}
+function val(id){ return document.getElementById(id).value.trim(); }
+
+const modal=document.getElementById('modal'), sheet=document.getElementById('sheet');
+let sheetOk=null;
+function openSheet(html, ok, delFn){
+  sheet.innerHTML = html + `<div class="btns">${delFn?'<button id="del">Delete</button>':''}<button id="cancel">Cancel</button>${ok?'<button id="ok">Save</button>':''}</div>`;
+  modal.style.display='block'; sheetOk=ok;
+  if(ok) document.getElementById('ok').onclick=()=>{ modal.style.display='none'; sheetOk&&sheetOk(); };
+  document.getElementById('cancel').onclick=()=>{ modal.style.display='none'; };
+  if(delFn) document.getElementById('del').onclick=()=>{ modal.style.display='none'; delFn(); };
+}
+/* one-tap result picker: tap a sample with the Move tool */
+function quickResult(s){
+  const btn=(k,m)=>{ const on=['pending','negative'].includes(k);
+    return `<button data-r="${k}" style="flex:1 1 46%;padding:15px 8px;border-radius:10px;border:2.5px solid ${m.c};
+      background:${on?'#fff':m.c};color:${on?m.c:'#fff'};font-weight:bold;font-size:14px;">${m.label}</button>`; };
+  openSheet(`<h2>${symChar(s)} ${dispId(s)} — set result</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:9px;margin-top:6px;">
+      ${validResults(s).map(k=>btn(k,RESULT_META[k])).join('')}
+    </div>`, null);
+  sheet.querySelectorAll('button[data-r]').forEach(b=>b.onclick=()=>{
+    pushUndo(); s.result=b.dataset.r; modal.style.display='none'; draw(); refreshResults();
+  });
+}
+
+/* ===== Save + New Job (with save-first warning) ===== */
+function saveJob(){
+  dl(new File([jobJson()], fileBase()+'_data.json', {type:'application/json'}));
+  flash('Job file saved to this device (check your Downloads / Files app)');
+}
+function saveMenu(){
+  openSheet(`<h2>Save as...</h2>
+    <div class="btns" style="flex-direction:column;gap:9px;">
+      <button id="sv-job" style="background:var(--blue);color:#fff;">💾 Job File (.json) — the editable master<br>
+        <span style="font-weight:normal;font-size:12px;">Reopens in this app later — for the office, lab results, and backups</span></button>
+      <button id="sv-pdf" style="background:#fff;color:var(--blue);border:2px solid var(--blue);">📄 PDF — full package<br>
+        <span style="font-weight:normal;font-size:12px;">Drawing + notes + sign-off + photos, ready to print or email</span></button>
+      <button id="sv-png" style="background:#fff;color:var(--blue);border:2px solid var(--blue);">🖼 PNG — drawing image<br>
+        <span style="font-weight:normal;font-size:12px;">Quick picture of the map for texting or pasting anywhere</span></button>
+    </div>`, null);
+  document.getElementById('sv-job').onclick=()=>{ modal.style.display='none'; saveJob(); };
+  document.getElementById('sv-pdf').onclick=async()=>{ modal.style.display='none';
+    dl(new File([canvasToPdf(await pdfPages())], fileBase()+'_drawing.pdf', {type:'application/pdf'}));
+    flash('PDF saved to this device'); };
+  document.getElementById('sv-png').onclick=async()=>{ modal.style.display='none';
+    const c=renderFinal(); const blob=await new Promise(r=>c.toBlob(r,'image/png'));
+    dl(new File([blob], fileBase()+'_drawing.png', {type:'image/png'}));
+    flash('PNG saved to this device'); };
+}
+function resetJob(){
+  S = { header:{ project:'', address:'', client:'', tech:S.header.tech||'', bd:'', scope:'',
+        date:new Date().toLocaleDateString('en-CA') },
+        walls:[], doors:[], rooms:[], samples:[], texts:[], gnotes:'', signoffs:[] };
+  PHOTOS={};
+  undoStack.length=0; redoStack.length=0;
+  draw(); refreshResults(); refreshNotes(); flash('New job started');
+}
+document.getElementById('saveBtn').onclick = saveMenu;
+/* ===== HELP / SOP / FEEDBACK ===== */
+const APP_VERSION = 'v22';
+const SOP_HTML = `
+<h2>? Help — APEX Field Sketch ${APP_VERSION}</h2>
+<div style="max-height:52vh;overflow-y:auto;font-size:13.5px;line-height:1.5;color:#333;">
+<p style="font-weight:bold;color:#1C4E9E;margin:8px 0 4px;">SOP — HOW TO DO A JOB (start to finish)</p>
+<p><b>1. Job Info first.</b> Tap Job Info (top right). Fill project number, address with units, client,
+your initials, the PM, build date, and scope. This feeds every export automatically.</p>
+<p><b>2. Draw the map.</b> Room Box: drag diagonally — a whole room appears. Hallway: drag between rooms —
+both corridor walls draw and connect. Wall &amp; Door for details, Stairs for stairwells.
+Made a mistake? Erase removes one wall square per tap; Undo/Redo are always there.
+To resize a room: Move tool, drag any wall — corners stay attached.</p>
+<p><b>3. Number the rooms.</b> Room tool, tap inside each room. Give it a name and its wall/ceiling/floor
+finishes (+ add another for multiple). Tick SiO&#8322; if dust contamination is evident.</p>
+<p><b>4. Drop your samples.</b> ● asbestos, ▲ lead, ◆ other — tap where you physically sampled.
+IDs number themselves (S01, L01, X01). Tap an existing sample to edit it.</p>
+<p><b>5. Photos.</b> Tap the 📷 in the top-right corner of any finished room (or the Photo tool) — your
+camera opens and the photo files itself to that room. Add a caption saying what it shows.</p>
+<p><b>6. Notes.</b> Notes tab — job notes and per-room notes. Type or tap 🎤 Dictate.</p>
+<p><b>7. Export &amp; go.</b> Export tab: set the job Status, add your Sign-off, then Share — the office
+gets the PDF drawing, the Word photo report comes from its own button, and the Job File is what they
+open later to enter lab results.</p>
+<p><b>Office/lab afterwards:</b> open the Job File, classify each sample on the Results tab (or tap it on
+the map with Move) — colors update everywhere. Add your own sign-off. Status → Reviewed when done.</p>
+<p style="font-weight:bold;color:#1C4E9E;margin:12px 0 4px;">TIPS</p>
+<p>· Two fingers pan and zoom the paper.<br>
+· Grey samples = awaiting lab. Black = clear. Red asbestos, green lead, orange vermiculite.<br>
+· The Legend tab is the full key. Extra legend lines can be typed on the Export tab.<br>
+· Everything you do is stamped with your name in the edit history.</p>
+<p style="font-size:12px;color:#888;">SOP updates ship with the app — Jeff: send changes to Cody and they'll appear here.</p>
+</div>
+<p style="font-weight:bold;color:#1C4E9E;margin:10px 0 4px;">Question or idea for the developers?</p>
+<p style="font-size:12px;color:#b30000;font-weight:bold;">Be really specific: which screen you were on, what you tapped, what you expected, and what happened instead.</p>
+<textarea id="fb-text" rows="3" placeholder="Your question / tip / bug report..."></textarea>
+<div class="btns" style="margin-top:10px;">
+  <button id="fb-send" style="background:var(--blue);color:#fff;">Send feedback</button>
+  <button id="tourBtn2" style="background:#fff;color:var(--blue);border:2px solid var(--blue);">Take the tour</button>
+  <button id="demoBtn" style="background:#fff;color:var(--blue);border:2px solid var(--blue);">Load demo job</button>
+</div>`;
+document.getElementById('helpBtn').onclick = () => {
+  openSheet(SOP_HTML, null);
+  document.getElementById('fb-send').onclick=()=>{
+    const t=val('fb-text'); if(!t){ alert('Type your feedback first — and be specific!'); return; }
+    location.href='mailto:codyrpadgett@gmail.com?subject='+encodeURIComponent('APEX Field Sketch feedback ('+APP_VERSION+')')+
+      '&body='+encodeURIComponent(t+'\n\n— '+(EDITOR?EDITOR.name+' ('+EDITOR.role+')':'unknown user'));
+  };
+  document.getElementById('tourBtn2').onclick=()=>{ modal.style.display='none'; startTour(); };
+  document.getElementById('demoBtn').onclick=()=>{ modal.style.display='none'; loadDemo(); };
+};
+
+/* ===== TOUR: pointer bubbles over the real UI ===== */
+const TOUR_STEPS = [
+  { sel:'#jobBtn',  text:'START HERE — Job Info: project number, address, client, PM, your initials. Fill it once; every export uses it.' },
+  { sel:'#tabs',    text:'The tabs: DRAW the map · NOTES per room (type or dictate) · LEGEND is the key to every symbol · RESULTS is where lab results get entered · EXPORT to save, sign off and share.' },
+  { sel:'#tools',   text:'Drawing: drag a ROOM BOX diagonally for a whole room. HALLWAY connects rooms. STAIRS, WALL & DOOR for details. Drop ●▲◆ samples where you sampled. ROOM numbers each room. MOVE resizes rooms (drag a wall — corners stay attached). ERASE rubs out one wall square.' },
+  { sel:'#wrap',    text:'Rooms show their number, name and finishes. The 📷 in each room corner opens your camera — photos file themselves to that room. Tap a sample with Move to set its lab result colour. Everything here can be edited from Notes too.' },
+  { sel:'#saveBtn', text:'SAVE gives you the editable Job File, the PDF drawing, or a PNG image. NEW warns you to save first so nothing is ever lost.' },
+  { sel:'#helpBtn', text:'And this ? button is always here — the full SOP walkthrough, tips, and a box to send us your questions and ideas. That is the tour!' }
+];
+let tourIdx = -1;
+function startTour(){ tourIdx = -1; document.querySelector('button[data-tab=draw]').click(); nextTour(); }
+function nextTour(){
+  tourIdx++;
+  const old=document.getElementById('tourBub'); if(old) old.remove();
+  const oldD=document.getElementById('tourDim'); if(oldD) oldD.remove();
+  if(tourIdx>=TOUR_STEPS.length){ try{localStorage.setItem('apexTourDone','1');}catch(e){} return; }
+  const st=TOUR_STEPS[tourIdx];
+  const el=document.querySelector(st.sel); if(!el){ nextTour(); return; }
+  const rc=el.getBoundingClientRect();
+  const dim=document.createElement('div'); dim.id='tourDim';
+  dim.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:90;';
+  document.body.appendChild(dim);
+  el.style.position=el.style.position||''; // highlight ring
+  const ring=document.createElement('div');
+  ring.style.cssText=`position:fixed;left:${rc.left-4}px;top:${rc.top-4}px;width:${rc.width+8}px;height:${rc.height+8}px;border:3px solid #FFD24D;border-radius:10px;z-index:91;pointer-events:none;`;
+  dim.appendChild(ring);
+  const below = rc.bottom < window.innerHeight*0.55;
+  const bub=document.createElement('div'); bub.id='tourBub';
+  bub.style.cssText=`position:fixed;z-index:92;left:12px;right:12px;${below?('top:'+(rc.bottom+14)+'px'):('bottom:'+(window.innerHeight-rc.top+14)+'px')};background:#fff;border-radius:14px;padding:14px;box-shadow:0 6px 30px rgba(0,0,0,.35);font-size:14px;line-height:1.45;`;
+  bub.innerHTML=`<div style="position:absolute;${below?'top:-9px':'bottom:-9px'};left:${Math.max(20,Math.min(window.innerWidth-40,rc.left+rc.width/2))-12}px;width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;${below?'border-bottom:10px solid #fff':'border-top:10px solid #fff'};"></div>
+    ${st.text}
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button id="tourSkip" style="flex:1;padding:10px;border:none;border-radius:8px;background:#eee;font-weight:bold;">Skip</button>
+      <button id="tourNext" style="flex:2;padding:10px;border:none;border-radius:8px;background:var(--blue);color:#fff;font-weight:bold;">${tourIdx===TOUR_STEPS.length-1?'Finish':'Next →'}</button>
+    </div>`;
+  document.body.appendChild(bub);
+  document.getElementById('tourNext').onclick=nextTour;
+  document.getElementById('tourSkip').onclick=()=>{ tourIdx=TOUR_STEPS.length-1; nextTour(); };
+}
+
+/* ===== DEMO JOB: mock two-floor house, fully filled out ===== */
+function loadDemo(){
+  const go=()=>{
+    PHOTOS={};
+    const C=CELL;
+    S={ header:{project:'DEMO26-001',address:'1 & 2 - 123 Example Ave, Kelowna, BC',client:'Demo Client Ltd.',
+        tech:EDITOR?EDITOR.name:'Demo',pm:'J. Manager',bd:'1968',scope:'Pre-reno HMS — main floor & basement',
+        date:new Date().toLocaleDateString('en-CA')},
+      walls:[], doors:[], rooms:[], samples:[], texts:[], stairs:[],
+      gnotes:'Demo job — every feature in use. Two levels drawn side by side.',
+      signoffs:[{name:'Demo Tech',role:'Field Technician',date:new Date().toLocaleDateString('en-CA')}],
+      history:[], status:'Lab Results Entered', legendExtra:'' };
+    const box=(x1,y1,x2,y2)=>{ S.walls.push({x1,y1,x2,y2:y1},{x1:x2,y1,x2,y2},{x1:x2,y1:y2,x2:x1,y2},{x1,y1:y2,x2:x1,y2:y1}); };
+    // MAIN FLOOR: kitchen + living + bath in a row, hallway beneath
+    box(2*C,3*C,10*C,9*C); box(10*C,3*C,18*C,9*C); box(18*C,3*C,23*C,9*C);
+    S.doors.push({x1:5*C,y1:9*C,x2:6*C,y2:9*C},{x1:13*C,y1:9*C,x2:14*C,y2:9*C},{x1:19*C,y1:9*C,x2:20*C,y2:9*C});
+    S.walls.push({x1:2*C,y1:11*C,x2:23*C,y2:11*C});
+    S.texts.push({x:2*C,y:2*C,str:'MAIN FLOOR'});
+    // BASEMENT below
+    box(2*C,14*C,12*C,20*C); box(12*C,14*C,20*C,20*C);
+    S.texts.push({x:2*C,y:13*C,str:'BASEMENT'});
+    S.stairs.push({x1:21*C,y1:12*C,x2:21*C,y2:16*C});
+    S.rooms.push(
+      {x:6*C,y:6*C,num:'1',name:'Kitchen',w:'DW',c:'TC/DW',f:'VSF',silica:false,notes:'Sink wall opened previously. 3 DJC samples at ceiling corner.',photos:[]},
+      {x:14*C,y:6*C,num:'2',name:'Living Room',w:'DW + Plaster',c:'Plaster',f:'Carpet',silica:false,notes:'Original plaster on north wall.',photos:[]},
+      {x:20.5*C,y:6*C,num:'3',name:'Bathroom',w:'DW',c:'DW',f:'CT',silica:false,notes:'Lead paint suspected on window trim.',photos:[]},
+      {x:7*C,y:17*C,num:'4',name:'Rec Room',w:'Wood Panel',c:'TC/DW',f:'Lino',silica:true,notes:'Dust throughout, poly recommended.',photos:[]},
+      {x:16*C,y:17*C,num:'5',name:'Laundry',w:'Concrete',c:'DW',f:'Concrete',silica:false,notes:'',photos:[]});
+    S.samples.push(
+      {x:4*C,y:4*C,type:'A',id:'S01',suffix:'a-c',material:'DJC',desc:'ceiling corner',result:'asbestos'},
+      {x:12*C,y:4*C,type:'A',id:'S02',suffix:'a-c',material:'Plaster',desc:'north wall',result:'negative'},
+      {x:22*C,y:5*C,type:'L',id:'L01',suffix:'',material:'DW',desc:'window trim',result:'lead'},
+      {x:4*C,y:19*C,type:'A',id:'S03',suffix:'a-c',material:'TC/DW',desc:'ceiling',result:'pending'},
+      {x:18*C,y:16*C,type:'O',id:'X01',suffix:'',material:'',desc:'',contam:'Mould',result:'other'});
+    normalize(); undoStack.length=0; redoStack.length=0;
+    draw(); refreshResults(); refreshNotes();
+    view.x=-10; view.y=-30; view.z=Math.min(1, (wrap.clientWidth-20)/(24*C)); draw();
+    flash('Demo job loaded — explore every tab. Hit New when done.');
+  };
+  const hasWork = S.walls.length || S.rooms.length || S.samples.length;
+  if(!hasWork){ go(); return; }
+  openSheet(`<h2>Load the demo job?</h2><p style="font-size:14px;">Your current job will be replaced on screen. Save it first if you need it.</p>
+    <div class="btns" style="flex-direction:column;gap:8px;">
+      <button id="dm-save" style="background:var(--blue);color:#fff;">Save current job, then load demo</button>
+      <button id="dm-go" style="background:#fbe3e3;color:#b30000;">Load demo without saving</button>
+    </div>`, null);
+  document.getElementById('dm-save').onclick=()=>{ saveJob(); modal.style.display='none'; go(); };
+  document.getElementById('dm-go').onclick=()=>{ modal.style.display='none'; go(); };
+}
+
+document.getElementById('cloudBtn').onclick = () => {
+  openSheet(`<h2>☁ Cloud Backup</h2>
+    ${bkUrl
+      ? `<p style="font-size:14.5px;margin:8px 0;color:#007a33;font-weight:bold;">Cloud backup is ON.</p>
+         <p style="font-size:13.5px;color:#555;">This job backs up automatically every 45 seconds while you work.</p>`
+      : `<p style="font-size:15px;margin:10px 0;font-weight:bold;">This feature still needs to be activated.</p>
+         <p style="font-size:13.5px;color:#555;">Once it's turned on, every job will back up automatically every 45 seconds while you work.
+         Until then, use the <b>Save</b> button — it saves the job file to this device.</p>`}
+    <label style="font-size:12px;color:#888;">Activation link (office use — paste when provided)</label>
+    <input id="bk-in" value="${bkUrl}" placeholder="">`,
+    ()=>{ bkUrl=val('bk-in'); try{ localStorage.setItem('apexBackupUrl', bkUrl); }catch(e){}
+      flash(bkUrl ? 'Cloud backup activated' : 'Cloud backup off'); });
+};
+document.getElementById('newBtn').onclick = () => {
+  const hasWork = S.walls.length || S.rooms.length || S.samples.length || S.texts.length || S.gnotes;
+  if(!hasWork){ resetJob(); return; }
+  openSheet(`<h2>⚠️ Start a new job?</h2>
+    <p style="font-size:14.5px;color:#333;margin:8px 0;">Your current job <b>${S.header.project||'(no project number yet)'}</b> will be cleared from the screen.
+    If it isn't saved, <b style="color:#b30000">it will be lost.</b></p>
+    <div class="btns" style="flex-direction:column;gap:9px;">
+      <button id="nj-save" style="background:var(--blue);color:#fff;">Save to this device, then start new</button>
+      <button id="nj-nosave" style="background:#fbe3e3;color:#b30000;">Start new WITHOUT saving</button>
+    </div>`, null);
+  document.getElementById('nj-save').onclick = () => { saveJob(); modal.style.display='none'; resetJob(); };
+  document.getElementById('nj-nosave').onclick = () => { modal.style.display='none'; resetJob(); };
+};
+
+/* job header form */
+document.getElementById('jobBtn').onclick = () => {
+  const H=S.header;
+  openSheet(`<h2>Job Info</h2>
+    <div class="row2"><div><label>Project No.</label><input id="f-p" value="${H.project}" placeholder="HOM26-214"></div>
+    <div><label>Date</label><input id="f-d" value="${H.date}"></div></div>
+    <label>Project address (incl. units)</label><input id="f-a" value="${H.address}" placeholder="3&6 - 191 4th St SE, Salmon Arm, BC">
+    <label>Client</label><input id="f-cl" value="${H.client}" placeholder="Client name">
+    <div class="row2"><div><label>Technician</label><input id="f-te" value="${H.tech}" placeholder="Initials"></div>
+    <div><label>Project Manager</label><input id="f-pm" value="${H.pm||''}" placeholder="PM name"></div>
+    <div><label>Build date</label><input id="f-bd" value="${H.bd}" placeholder="1974"></div></div>
+    <label>Scope note</label><textarea id="f-sc" rows="2" placeholder="e.g. Unit 3 ceiling finishes, Unit 6 wall finishes">${H.scope}</textarea>
+    <label>Site GPS</label>
+    <div style="display:flex;gap:8px;">
+      <input id="f-geo" value="${H.geo||''}" placeholder="tap the button on site" style="flex:1;">
+      <button type="button" id="geoBtn" class="micb" style="flex:0 0 auto;">📍 Capture</button>
+    </div>`,
+    ()=>{ S.header={project:val('f-p'),date:val('f-d'),address:val('f-a'),client:val('f-cl'),tech:val('f-te'),pm:val('f-pm'),bd:val('f-bd'),scope:val('f-sc'),geo:val('f-geo')}; });
+  document.getElementById('geoBtn').onclick=()=>{
+    if(!navigator.geolocation){ alert('No GPS available in this browser.'); return; }
+    const gb=document.getElementById('geoBtn'); gb.textContent='📍 ...';
+    navigator.geolocation.getCurrentPosition(pos=>{
+      document.getElementById('f-geo').value =
+        pos.coords.latitude.toFixed(6)+', '+pos.coords.longitude.toFixed(6)+' (±'+Math.round(pos.coords.accuracy)+'m)';
+      gb.textContent='📍 Capture'; flash('Location captured');
+    }, ()=>{ gb.textContent='📍 Capture';
+      alert('Could not get location — check location permission for your browser.'); },
+    {enableHighAccuracy:true, timeout:10000});
+  };
+};
+
+/* ================= tabs & tools ================= */
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  const t=b.dataset.tab;
+  wrap.style.display = t==='draw'?'block':'none';
+  document.getElementById('tools').style.display = t==='draw'?'flex':'none';
+  document.getElementById('p-notes').style.display = t==='notes'?'block':'none';
+  document.getElementById('p-legend').style.display = t==='legend'?'block':'none';
+  document.getElementById('p-results').style.display = t==='results'?'block':'none';
+  document.getElementById('p-export').style.display = t==='export'?'block':'none';
+  if(t==='notes') refreshNotes();
+  if(t==='draw') fit();
+  if(t==='results') refreshResults();
+  if(t==='export'){ renderPreview(); refreshSignoffs(); refreshHistory();
+    document.getElementById('jstatus').value = S.status||'Draft';
+    document.getElementById('legextra').value = S.legendExtra||''; }
+});
+document.querySelectorAll('#tools button[data-tool]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#tools button[data-tool]').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  tool=b.dataset.tool;
+  document.getElementById('hint').textContent = {
+    box:'Drag diagonally — a whole room appears, corners auto-closed', hall:'Drag between rooms — both corridor walls draw at once',
+    stairs:'Drag the run of the stairs — rails and rungs draw automatically',
+    wall:'TAP = one grid square of wall · press & drag = long wall', door:'Drag along a wall to cut a door opening',
+    room:'Tap inside a room to number it · tap an existing number to edit it', asb:'Tap to place ● asbestos · tap an existing sample to edit',
+    lead:'Tap to place ▲ lead · tap an existing sample to edit',
+    text:'Tap to add a text note · tap existing text to edit', note:'Tap inside a room to write/dictate its notes',
+    photo:'Tap inside a room — camera opens, photo attaches to that room',
+    move:'Drag a wall — the room resizes, corners stay attached · TAP a sample for its colour',
+    erase:'Tap a wall — erases just that grid section · tap a number/sample to delete it' }[tool];
+});
+document.getElementById('undoBtn').onclick=undo;
+document.getElementById('redoBtn').onclick=redo;
+
+/* AUTO ALIGN ALL: weld near-touching corners, re-square drifted walls, trim ends to meet
+   perpendicular walls, snap everything to the grid, drop duplicates. Undo restores if wrong. */
+function autoAlign(){
+  if(!S.walls.length && !S.rooms.length && !S.samples.length) return;
+  pushUndo();
+  const tol = CELL*0.6;
+  // 1. weld endpoint clusters to their common corner
+  const pts = [];
+  for(const w of S.walls){ pts.push({w,kx:'x1',ky:'y1'},{w,kx:'x2',ky:'y2'}); }
+  const gx = p => p.w[p.kx], gy = p => p.w[p.ky];
+  const used = new Array(pts.length).fill(false);
+  for(let i=0;i<pts.length;i++){
+    if(used[i]) continue;
+    const cl=[i];
+    for(let j=i+1;j<pts.length;j++)
+      if(!used[j] && Math.hypot(gx(pts[i])-gx(pts[j]), gy(pts[i])-gy(pts[j])) < tol) cl.push(j);
+    if(cl.length>1){
+      let cx=0, cy=0;
+      cl.forEach(k=>{ cx+=gx(pts[k]); cy+=gy(pts[k]); });
+      cx/=cl.length; cy/=cl.length;
+      cl.forEach(k=>{ pts[k].w[pts[k].kx]=cx; pts[k].w[pts[k].ky]=cy; used[k]=true; });
+    }
+  }
+  // 2. re-square: force each wall back to its dominant axis
+  for(const w of S.walls){
+    if(Math.abs(w.x2-w.x1) >= Math.abs(w.y2-w.y1)){ const y=(w.y1+w.y2)/2; w.y1=w.y2=y; }
+    else { const x=(w.x1+w.x2)/2; w.x1=w.x2=x; }
+  }
+  // 3. T-junctions: trim/extend endpoints onto perpendicular walls they nearly meet
+  for(const w of S.walls){
+    for(const [kx,ky] of [['x1','y1'],['x2','y2']]){
+      for(const o of S.walls){
+        if(o===w || isH(o)===isH(w)) continue;
+        if(isH(w)){
+          const lo=Math.min(o.y1,o.y2), hi=Math.max(o.y1,o.y2);
+          if(Math.abs(w[kx]-o.x1)<tol && w[ky]>=lo-tol && w[ky]<=hi+tol){ w[kx]=o.x1; break; }
+        } else {
+          const lo=Math.min(o.x1,o.x2), hi=Math.max(o.x1,o.x2);
+          if(Math.abs(w[ky]-o.y1)<tol && w[kx]>=lo-tol && w[kx]<=hi+tol){ w[ky]=o.y1; break; }
+        }
+      }
+    }
+  }
+  // 4. snap all coordinates to the grid
+  for(const w of S.walls){ w.x1=snap(w.x1); w.y1=snap(w.y1); w.x2=snap(w.x2); w.y2=snap(w.y2); }
+  for(const d of S.doors){ d.x1=snap(d.x1); d.y1=snap(d.y1); d.x2=snap(d.x2); d.y2=snap(d.y2); }
+  for(const arr of [S.rooms, S.samples, S.texts]) for(const o of arr){ o.x=snap(o.x); o.y=snap(o.y); }
+  // 5. drop zero-length walls and exact duplicates
+  S.walls = S.walls.filter(w=>Math.hypot(w.x2-w.x1, w.y2-w.y1) >= CELL*0.5);
+  const seen = new Set();
+  S.walls = S.walls.filter(w=>{
+    const k=[Math.min(w.x1,w.x2),Math.min(w.y1,w.y2),Math.max(w.x1,w.x2),Math.max(w.y1,w.y2)].join(',');
+    if(seen.has(k)) return false; seen.add(k); return true;
+  });
+  draw(); refreshResults();
+  flash('Auto-aligned — corners welded, walls squared, all snapped to grid (Undo if needed)');
+}
+
+/* ================= results tab ================= */
+function resultOptions(sel, s){
+  const keys = s ? validResults(s) : Object.keys(RESULT_META);
+  return keys.map(k=>`<option value="${k}" ${k===sel?'selected':''}>${RESULT_META[k].label}</option>`).join('');
+}
+function refreshResults(){
+  const el=document.getElementById('rlist'); el.innerHTML='';
+  if(!S.samples.length){ el.innerHTML='<p style="color:#888;font-size:14px;padding:20px 0;">No samples placed yet.</p>'; return; }
+  for(const s of S.samples){
+    const col = resultColor(s,false);
+    const row=document.createElement('div'); row.className='rrow';
+    row.innerHTML=`<div class="sym" style="color:${col}">${symChar(s)}</div>
+      <div class="lab">${dispId(s)} <span class="mat">${s.material||''} ${s.desc||''}</span></div>
+      <select class="rsel" style="color:${col}">${resultOptions(s.result||'pending', s)}</select>`;
+    row.querySelector('.rsel').onchange=e=>{ pushUndo(); s.result=e.target.value; refreshResults(); draw(); };
+    el.appendChild(row);
+  }
+}
+
+/* ================= export: finished APEX drawing ================= */
+/* APEX EHS Services logo — vector recreation of the official mark */
+function drawLogo(g, x, y, w){
+  const s=w/600;
+  g.save(); g.translate(x,y); g.scale(s,s);
+  g.fillStyle='#21395E';
+  g.beginPath(); g.moveTo(112,8); g.lineTo(592,8); g.lineTo(526,212); g.lineTo(46,212); g.closePath(); g.fill();
+  g.fillStyle='#ffffff'; g.font='italic 900 156px Arial'; g.textAlign='center';
+  g.fillText('APEX', 315, 168);
+  g.fillStyle='#1B75BC'; g.font='900 66px Arial';
+  g.fillText('EHS SERVICES', 318, 281);
+  g.restore(); g.textAlign='left';
+}
+function renderFinal(){
+  const W=1700, H=1057, k=1.2;   // matches house 1417x881 layout * 1.2
+  const c=document.createElement('canvas'); c.width=W; c.height=H;
+  const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,W,H);
+  const px=v=>v*k;
+  drawLogo(g, px(52), px(34), px(190));
+  // status stamp
+  const stCol={'Draft':'#888888','Field Complete':'#1B75BC','Lab Results Entered':'#E07800','Reviewed — Final':'#007A33'}[S.status]||'#888';
+  g.fillStyle=stCol; g.font=`bold ${px(17)}px Arial`; g.textAlign='right';
+  g.fillText(`STATUS: ${(S.status||'Draft').toUpperCase()}`, px(1398), px(58));
+  if(S.lastEdit){ g.font=`${px(12)}px Arial`; g.fillStyle='#666';
+    g.fillText(`Last edited: ${S.lastEdit.name} — ${S.lastEdit.when}`, px(1398), px(80)); }
+  g.textAlign='left';
+  // scope / silica notes
+  g.fillStyle='#000';
+  let ny=px(80);
+  if(S.header.scope){ g.font=`italic ${px(14)}px Arial`; g.fillText('Scope: '+S.header.scope+(S.header.bd?`  (BD: ${S.header.bd})`:''), px(420), ny); ny+=px(22); }
+  const sil=S.rooms.filter(r=>r.silica).map(r=>r.num);
+  if(sil.length){ g.font=`bold italic ${px(14)}px Arial`;
+    g.fillText(`SiO₂ / dust contamination evident: Loc. ${sil.join(', ')}`, px(420), ny); ny+=px(22); }
+  if(S.header.geo){ g.font=`${px(12.5)}px Arial`; g.fillStyle='#555';
+    g.fillText(`Site GPS: ${S.header.geo}`, px(420), ny); g.fillStyle='#000'; }
+  // locations list
+  g.font=`bold ${px(16)}px Arial`; g.fillText('Locations:',px(40),px(178));
+  g.fillRect(px(40),px(182),px(78),px(2));
+  const rooms=[...S.rooms].sort((a,b)=>+a.num-+b.num);
+  g.font=`${px(13.5)}px Arial`;
+  rooms.forEach((r,i)=>{
+    const col=Math.floor(i/16), yy=px(206+(i%16)*26), xx=px(40+col*175);
+    g.fillText(`${r.num}. ${r.name||'—'}${r.w?` — W:${r.w}`:''}${r.c?` C:${r.c}`:''}${r.f?` F:${r.f}`:''}`.slice(0,42), xx, yy);
+  });
+  // plan: fit content bounding box into region
+  const xs=[],ys=[];
+  const addPt=(x,y)=>{xs.push(x);ys.push(y);};
+  S.walls.concat(S.doors).forEach(w=>{addPt(w.x1,w.y1);addPt(w.x2,w.y2);});
+  S.rooms.forEach(r=>addPt(r.x,r.y)); S.samples.forEach(s=>addPt(s.x,s.y)); S.texts.forEach(t=>addPt(t.x,t.y));
+  if(xs.length){
+    const bx1=Math.min(...xs)-CELL, by1=Math.min(...ys)-CELL, bx2=Math.max(...xs)+CELL, by2=Math.max(...ys)+CELL;
+    const R={x:px(430),y:px(148),w:px(950),h:px(470)};
+    const sc=Math.min(R.w/(bx2-bx1), R.h/(by2-by1), 2.2);
+    g.save();
+    g.translate(R.x+(R.w-(bx2-bx1)*sc)/2, R.y+(R.h-(by2-by1)*sc)/2);
+    g.scale(sc,sc); g.translate(-bx1,-by1);
+    paintContent(g, Math.max(1, 1.1/Math.sqrt(sc)), true);
+    g.restore();
+  }
+  // title block
+  g.strokeStyle='#000'; g.lineWidth=px(3); g.strokeRect(px(65),px(650),px(1335),px(205));
+  g.lineWidth=px(2.5);
+  const ln=(x1,y1,x2,y2)=>{g.beginPath();g.moveTo(px(x1),px(y1));g.lineTo(px(x2),px(y2));g.stroke();};
+  ln(300,650,300,855); ln(1085,650,1085,855); ln(65,700,1400,700); ln(300,810,1085,810); ln(1085,752,1400,752); ln(1085,804,1400,804);
+  g.fillStyle='#000'; g.font=`${px(22)}px Arial`; g.textAlign='center'; g.fillText('LEGEND',px(182),px(684));
+  g.textAlign='left';
+  const found=new Set(S.samples.map(s=>s.result).filter(r=>['asbestos','lead','vermiculite','other'].includes(r)));
+  const hasO = S.samples.some(s=>s.type==='O');
+  const hasStairs = (S.stairs||[]).length > 0;
+  const extraLines = (S.legendExtra||'').split('\n').map(t=>t.trim()).filter(Boolean).slice(0,4);
+  // adaptive layout: always fits inside the legend cell (y 700..855), shrinking rows as lines are added
+  const nRows = 2 + (hasO?1:0) + (hasStairs?1:0) + extraLines.length + found.size;
+  const rowH = Math.min(27, 146/nRows);
+  const labF = Math.min(17, rowH*0.66), posF = Math.min(15.5, rowH*0.6);
+  let yy = 700 + rowH*0.82;
+  g.fillStyle='#000';
+  g.beginPath(); g.arc(px(87),px(yy),px(7.5),0,7); g.fill();
+  g.font=`${px(labF)}px Arial`; g.fillText('Asbestos Sample Location',px(102),px(yy+labF*0.34)); yy+=rowH;
+  if(found.has('asbestos')){ g.fillStyle='#E00000'; g.font=`${px(posF)}px Arial`; g.fillText('-Positive Result',px(104),px(yy-rowH*0.28)); yy+=rowH*0.8; }
+  g.fillStyle='#000';
+  g.beginPath(); g.moveTo(px(87),px(yy-7.5)); g.lineTo(px(79),px(yy+7)); g.lineTo(px(95),px(yy+7)); g.closePath(); g.fill();
+  g.font=`${px(labF)}px Arial`; g.fillText('Lead Sample Location',px(102),px(yy+labF*0.34)); yy+=rowH;
+  if(found.has('lead')){ g.fillStyle='#00A040'; g.font=`${px(posF)}px Arial`; g.fillText('-Positive Result',px(104),px(yy-rowH*0.28)); yy+=rowH*0.8; }
+  if(hasO){
+    g.fillStyle='#000';
+    g.beginPath(); g.moveTo(px(87),px(yy-8)); g.lineTo(px(94),px(yy)); g.lineTo(px(87),px(yy+8)); g.lineTo(px(80),px(yy)); g.closePath(); g.fill();
+    g.font=`${px(labF)}px Arial`; g.fillText('Other Contaminant Sample',px(102),px(yy+labF*0.34)); yy+=rowH;
+  }
+  if(found.has('vermiculite')){ g.fillStyle='#E07800'; g.font=`${px(posF)}px Arial`; g.fillText('-Vermiculite Positive',px(104),px(yy-rowH*0.28)); yy+=rowH*0.8; }
+  if(found.has('other')){ g.fillStyle='#7A00B0'; g.font=`${px(posF)}px Arial`; g.fillText('-Other Contaminant Positive',px(104),px(yy-rowH*0.28)); yy+=rowH*0.8; }
+  if(hasStairs){
+    g.strokeStyle='#000'; g.lineWidth=px(1.4);
+    for(let i=0;i<4;i++){ g.beginPath(); g.moveTo(px(80+i*5),px(yy-7)); g.lineTo(px(80+i*5),px(yy+7)); g.stroke(); }
+    g.fillStyle='#000'; g.font=`${px(labF)}px Arial`; g.fillText('Stairs',px(102),px(yy+labF*0.34)); yy+=rowH;
+  }
+  g.fillStyle='#000'; g.font=`${px(posF)}px Arial`;
+  for(const ln of extraLines){ g.fillText(ln.slice(0,30),px(80),px(yy+2)); yy+=rowH*0.8; }
+  g.fillStyle='#000';
+  const H2=S.header;
+  const fitTxt=(t,maxW,base)=>{ let f=base; g.font=`${px(f)}px Arial`;
+    while(g.measureText(t).width>px(maxW) && f>10){ f-=0.5; g.font=`${px(f)}px Arial`; } };
+  g.font=`${px(20)}px Arial`;
+  g.fillText('PROJECT NAME:',px(315),px(684));
+  g.textAlign='center';
+  fitTxt('Pre-Renovation Hazardous Materials Survey',560,20); g.fillText('Pre-Renovation Hazardous Materials Survey',px(790),px(684));
+  g.textAlign='left'; g.font=`${px(20)}px Arial`;
+  g.fillText('PROJECT ADDRESS:',px(315),px(762));
+  g.textAlign='center'; fitTxt(H2.address||'—',540,20); g.fillText(H2.address||'—',px(800),px(762));
+  g.textAlign='left'; g.font=`${px(20)}px Arial`;
+  g.fillText('CLIENT:',px(315),px(839));
+  g.textAlign='center'; fitTxt(H2.client||'—',600,20); g.fillText(H2.client||'—',px(765),px(839));
+  g.textAlign='left'; g.font=`${px(20)}px Arial`;
+  g.fillText('DATE:',px(1100),px(684)); fitTxt(H2.date||'',175,20); g.fillText(H2.date||'',px(1180),px(684)); g.font=`${px(20)}px Arial`;
+  g.fillText('PROJECT NO.:',px(1100),px(734)); fitTxt(H2.project||'—',145,20); g.fillText(H2.project||'—',px(1248),px(734)); g.font=`${px(20)}px Arial`;
+  g.fillText('SCALE:',px(1100),px(784)); g.fillText('NTS',px(1250),px(784));
+  g.fillText('DRAWN BY:',px(1100),px(836)); fitTxt(H2.tech||'—',165,20); g.fillText(H2.tech||'—',px(1230),px(836)); g.font=`${px(20)}px Arial`;
+  g.font=`bold ${px(15)}px Arial`;
+  g.fillText('NOTE: DRAWING IS COLOUR DEPENDENT. NON-COLOUR COPIES MAY ALTER INTERPRETATION.',px(65),px(876));
+  return c;
+}
+function renderPreview(){
+  const c=renderFinal(), pv=document.getElementById('preview'), g=pv.getContext('2d');
+  pv.width=c.width; pv.height=c.height; g.drawImage(c,0,0);
+}
+function fileBase(){ return (S.header.project||'APEX-job').replace(/[^\w-]+/g,'_'); }
+async function getFiles(){
+  const c=renderFinal();
+  const blob=await new Promise(r=>c.toBlob(r,'image/png'));
+  const png=new File([blob], fileBase()+'_drawing.png', {type:'image/png'});
+  const json=new File([jobJson()], fileBase()+'_data.json', {type:'application/json'});
+  return [png,json];
+}
+async function pdfPages(){
+  // final deliverable = the drawing sheet only (blank-template style, per Cody).
+  // Notes stay in the app/job file; photos + room descriptions go to the Word photo report.
+  return [renderFinal()];
+}
+/* SITE PHOTOS pages: 6 per page, each labeled with its room */
+async function renderPhotoPages(){
+  const items=[];
+  for(const r of [...S.rooms].sort((a,b)=>+a.num-+b.num))
+    (r.photos||[]).forEach((ph,i)=>{ if(PHOTOS[ph.pid]) items.push({r,ph,n:i+1}); });
+  if(!items.length) return [];
+  const pages=[];
+  for(let off=0; off<items.length; off+=6){
+    const chunk=items.slice(off,off+6);
+    const W=1700,H=1057,k=1.2,px=v=>v*k;
+    const c=document.createElement('canvas'); c.width=W; c.height=H;
+    const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,W,H);
+    drawLogo(g,px(58),px(30),px(120));
+    g.fillStyle='#000'; g.font=`bold ${px(24)}px Arial`; g.fillText('SITE PHOTOS',px(200),px(68));
+    g.font=`${px(15)}px Arial`; g.fillStyle='#444';
+    g.fillText(`${S.header.project||''}   ${S.header.address||''}   ${S.header.date||''}`,px(200),px(94));
+    g.strokeStyle='#000'; g.lineWidth=px(2);
+    g.beginPath(); g.moveTo(px(60),px(112)); g.lineTo(px(1355),px(112)); g.stroke();
+    for(let i=0;i<chunk.length;i++){
+      const {r,ph,n}=chunk[i];
+      const col=i%3, row=Math.floor(i/3);
+      const cx=px(60+col*442), cy=px(128+row*352), cw=px(408), ch=px(276);
+      const im=await loadImg(PHOTOS[ph.pid]);
+      const s=Math.min(cw/im.width, ch/im.height);
+      const dw=im.width*s, dh=im.height*s;
+      g.drawImage(im, cx+(cw-dw)/2, cy+(ch-dh)/2, dw, dh);
+      g.strokeStyle='#bbb'; g.lineWidth=1.5; g.strokeRect(cx,cy,cw,ch);
+      g.fillStyle='#000'; g.font=`bold ${px(13.5)}px Arial`;
+      g.fillText(`Room ${r.num}${r.name?' · '+r.name:''} — photo ${n}`, cx, cy+ch+px(20));
+      if(ph.caption){ g.font=`${px(12.5)}px Arial`; g.fillStyle='#444'; g.fillText(ph.caption.slice(0,58), cx, cy+ch+px(38)); }
+    }
+    pages.push(c);
+  }
+  return pages;
+}
+/* "draw it or don't record it": warn hard before sharing a job whose rooms aren't drawn */
+function drawingGuard(cont){
+  const undrawn = S.rooms.filter(r=>r.x==null).length;
+  const noWalls = S.rooms.length > 0 && S.walls.length === 0;
+  if(!undrawn && !noWalls){ cont(); return; }
+  openSheet(`<h2>⚠️ This job isn't drawn</h2>
+    <p style="font-size:14.5px;margin:8px 0;">${undrawn?`<b>${undrawn} room${undrawn===1?' has':'s have'} no drawing.</b> `:''}${noWalls?'No walls have been drawn. ':''}
+    APEX jobs should include a drawn map. Go back and draw it — or if you truly can't, the notes will export
+    but this job will be marked incomplete.</p>
+    <div class="btns" style="flex-direction:column;gap:9px;">
+      <button id="dg-back" style="background:var(--blue);color:#fff;">Go back and draw it</button>
+      <button id="dg-anyway" style="background:#fbe3e3;color:#b30000;">Export anyway (notes-only, incomplete)</button>
+    </div>`, null);
+  document.getElementById('dg-back').onclick=()=>{ modal.style.display='none';
+    document.querySelector('button[data-tab=draw]').click(); };
+  document.getElementById('dg-anyway').onclick=()=>{ modal.style.display='none'; cont(); };
+}
+document.getElementById('shareBtn').onclick=()=>drawingGuard(shareNow);
+async function shareNow(){
+  const c=renderFinal();
+  const blob=await new Promise(r=>c.toBlob(r,'image/png'));
+  const files=[
+    new File([canvasToPdf(await pdfPages())], fileBase()+'_drawing.pdf', {type:'application/pdf'}),
+    new File([jobJson()], fileBase()+'_data.json', {type:'application/json'}),
+    new File([blob], fileBase()+'_drawing.png', {type:'image/png'})
+  ];
+  if(navigator.canShare && navigator.canShare({files})){
+    try{ await navigator.share({files, title:S.header.project||'APEX drawing'}); return; }catch(e){}
+  }
+  if(navigator.canShare && navigator.canShare({files:files.slice(0,2)})){
+    try{ await navigator.share({files:files.slice(0,2), title:S.header.project||'APEX drawing'}); return; }catch(e){}
+  }
+  files.forEach(dl); alert('Sharing not supported on this browser — files downloaded instead.');
+};
+document.getElementById('dlPng').onclick=async()=>dl((await getFiles())[0]);
+document.getElementById('dlPdf').onclick=()=>drawingGuard(async()=>{
+  dl(new File([canvasToPdf(await pdfPages())], fileBase()+'_drawing.pdf', {type:'application/pdf'}));
+});
+document.getElementById('dlDocx').onclick=async()=>{
+  const blob = await buildPhotoReport();
+  dl(new File([blob], fileBase()+'_photo_report.docx',
+    {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}));
+  flash('Photo report saved — open it in Word to edit text or remove photos');
+};
+
+/* ===== PHOTO REPORT (.docx) — client-simple: room description + photos, no sample IDs.
+   Word so the office can edit text / remove photos easily. Built with a minimal ZIP writer — offline. ===== */
+const CRC_T = (()=>{ const t=[]; for(let n=0;n<256;n++){ let c=n;
+  for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320 ^ (c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(u8){ let c=0xFFFFFFFF; for(let i=0;i<u8.length;i++) c = CRC_T[(c^u8[i])&0xFF] ^ (c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(files){
+  const enc = new TextEncoder();
+  const parts=[], central=[]; let offset=0;
+  for(const f of files){
+    const name = enc.encode(f.name);
+    const data = f.data instanceof Uint8Array ? f.data : enc.encode(f.data);
+    const crc = crc32(data);
+    const lh = new Uint8Array(30+name.length); const dv = new DataView(lh.buffer);
+    dv.setUint32(0,0x04034b50,true); dv.setUint16(4,20,true);
+    dv.setUint32(14,crc,true); dv.setUint32(18,data.length,true); dv.setUint32(22,data.length,true);
+    dv.setUint16(26,name.length,true);
+    lh.set(name,30); parts.push(lh,data);
+    const ch = new Uint8Array(46+name.length); const cv = new DataView(ch.buffer);
+    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+    cv.setUint32(16,crc,true); cv.setUint32(20,data.length,true); cv.setUint32(24,data.length,true);
+    cv.setUint16(28,name.length,true); cv.setUint32(42,offset,true);
+    ch.set(name,46); central.push(ch);
+    offset += lh.length + data.length;
+  }
+  const cSize = central.reduce((a,c)=>a+c.length,0);
+  const end = new Uint8Array(22); const ev = new DataView(end.buffer);
+  ev.setUint32(0,0x06054b50,true); ev.setUint16(8,files.length,true); ev.setUint16(10,files.length,true);
+  ev.setUint32(12,cSize,true); ev.setUint32(16,offset,true);
+  return new Blob([...parts,...central,end]);
+}
+function b64bytes(dataURL){
+  const bin = atob(dataURL.split(',')[1]);
+  const u = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+  return u;
+}
+const PLAIN_SUBSTRATE = {DW:'drywall',DJC:'drywall joint compound','TC/DW':'textured drywall',Plaster:'plaster',
+  'Plaster/Lathe':'plaster on wood lathe',CT:'ceramic tile',VSF:'vinyl sheet flooring',
+  'W.P. VSF':'wood-pattern vinyl sheet flooring','Wood Panel':'wood panelling',Concrete:'concrete',
+  Lino:'linoleum',Carpet:'carpet',Other:'other'};
+function plainFinish(str){ return (str||'').split(' + ').filter(Boolean).map(v=>PLAIN_SUBSTRATE[v]||v.toLowerCase()).join(' and '); }
+function roomSamples(r){
+  if(r.x==null) return [];
+  const rect = roomRect(r); if(!rect) return [];
+  return S.samples.filter(s=>s.x>rect.xl && s.x<rect.xr && s.y>rect.yt && s.y<rect.yb);
+}
+function clientDescription(r){
+  const bits=[];
+  const w=plainFinish(r.w), cg=plainFinish(r.c), f=plainFinish(r.f);
+  if(w) bits.push('walls of '+w); if(cg) bits.push('a '+cg+' ceiling');
+  if(f) bits.push(/floor|carpet|lino|tile/i.test(f) ? f : f+' flooring');
+  let d = bits.length ? 'This room has '+bits.join(', ')+'. ' : '';
+  const ss = roomSamples(r);
+  const finds = [...new Set(ss.map(s=>s.result).filter(x=>['asbestos','lead','vermiculite','other'].includes(x)))];
+  if(finds.length){
+    d += finds.map(x=>({asbestos:'Asbestos was found in this room.',lead:'Lead paint was found in this room.',
+      vermiculite:'Vermiculite was found in this room.',other:'A contaminant was found in this room.'}[x])).join(' ');
+  } else if(ss.some(s=>s.result==='pending' || !s.result)){
+    d += 'Samples were collected in this room; laboratory results are pending.';
+  } else if(ss.length){
+    d += 'Samples collected in this room did not identify contaminants.';
+  }
+  if(r.silica) d += ' Dust contamination was observed in this room.';
+  return d.trim() || 'No description recorded.';
+}
+async function buildPhotoReport(){
+  const esc = s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const paras=[]; const media=[]; const rels=[];
+  const P=(t,{b=false,sz=22,color='000000',after=120}={})=>paras.push(
+    `<w:p><w:pPr><w:spacing w:after="${after}"/></w:pPr><w:r><w:rPr>${b?'<w:b/>':''}<w:sz w:val="${sz}"/><w:color w:val="${color}"/></w:rPr><w:t xml:space="preserve">${esc(t)}</w:t></w:r></w:p>`);
+  P('APEX EHS SERVICES — SITE PHOTO REPORT', {b:true, sz:32, color:'21395E', after:60});
+  P(`${S.header.project||''}   ${S.header.address||''}`, {sz:22, color:'444444', after:40});
+  P(`Client: ${S.header.client||'—'}    Date: ${S.header.date||''}    ${S.header.pm?'PM: '+S.header.pm:''}`, {sz:20, color:'444444', after:S.header.geo?40:240});
+  if(S.header.geo) P(`Site GPS: ${S.header.geo}   (maps: https://maps.google.com/?q=${(S.header.geo.match(/-?[\d.]+,\s*-?[\d.]+/)||[''])[0].replace(/\s/g,'')})`, {sz:18, color:'666666', after:240});
+  const rooms=[...S.rooms].sort((a,b)=>+a.num-+b.num);
+  let imgId=0;
+  for(const r of rooms){
+    P(r.name || ('Room '+r.num), {b:true, sz:26, after:80});
+    P(clientDescription(r), {sz:22, after:160});
+    for(const ph of (r.photos||[])){
+      if(!PHOTOS[ph.pid]) continue;
+      const im = await loadImg(PHOTOS[ph.pid]);
+      imgId++;
+      const rid = 100+imgId;
+      const maxW = 5029200; // 5.5 inches in EMU
+      let cx = im.width*9525, cy = im.height*9525;
+      if(cx>maxW){ cy = Math.round(cy*maxW/cx); cx = maxW; }
+      media.push({name:`word/media/img${imgId}.jpg`, data:b64bytes(PHOTOS[ph.pid])});
+      rels.push(`<Relationship Id="rId${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/img${imgId}.jpg"/>`);
+      paras.push(`<w:p><w:pPr><w:spacing w:after="60"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${imgId}" name="Photo ${imgId}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${imgId}" name="Photo ${imgId}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`);
+      if(ph.caption) P(ph.caption, {sz:18, color:'666666', after:200});
+      else P(' ', {sz:12, after:120});
+    }
+  }
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${paras.join('')}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080"/></w:sectPr></w:body></w:document>`;
+  const files = [
+    {name:'[Content_Types].xml', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`},
+    {name:'_rels/.rels', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`},
+    {name:'word/document.xml', data:doc},
+    {name:'word/_rels/document.xml.rels', data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join('')}</Relationships>`},
+    ...media
+  ];
+  return zipStore(files);
+}
+document.getElementById('soBtn').onclick=addSignoff;
+document.getElementById('jstatus').onchange=e=>{ pushUndo(); S.status=e.target.value; renderPreview(); };
+document.getElementById('legextra').onchange=e=>{ pushUndo(); S.legendExtra=e.target.value; renderPreview(); };
+document.getElementById('gnotes') && (document.getElementById('gnotes').onchange=e=>{ S.gnotes=e.target.value; });
+document.getElementById('gmic').onclick=function(){ startDictation(document.getElementById('gnotes'), this); };
+document.getElementById('addRoomBtn').onclick=()=>placeRoom(null,null);
+document.getElementById('autoDrawBtn').onclick=autoDraw;
+
+/* ===== AUTO-DRAW: parse dictated room notes into a drawn first draft ===== */
+function parseSamples(txt){
+  const out=[];
+  for(let s of String(txt||'').split(/[.;\n]+/)){
+    s=s.toLowerCase();
+    if(!/(sample|sampled|swab|chip|took a|did a)/.test(s)) continue;
+    let loc='center';
+    if(/left wall|left-hand/.test(s)) loc='left';
+    else if(/right wall|right-hand/.test(s)) loc='right';
+    else if(/front wall|forward wall|wall in front|ahead/.test(s)) loc='front';
+    else if(/back wall|rear wall|behind/.test(s)) loc='back';
+    else if(/ceiling/.test(s)) loc='ceiling';
+    else if(/floor/.test(s)) loc='floor';
+    let type='A', contam='';
+    if(/lead|paint chip|painted/.test(s)) type='L';
+    else {
+      const m=s.match(/mould|mold|mercury|pcb|uffi|radon|guano|dropping|meth|arsenic/);
+      if(m){ type='O';
+        contam={mould:'Mould',mold:'Mould',mercury:'Mercury',pcb:'PCBs (ballasts/caulking)',uffi:'UFFI (foam insulation)',
+          radon:'Radon',guano:'Guano / droppings',dropping:'Guano / droppings',meth:'Meth / drug residue',
+          arsenic:'Arsenic (treated wood)'}[m[0]]||'Other'; }
+    }
+    let mat='';
+    if(/joint compound|djc|mud/.test(s)) mat='DJC';
+    else if(/texture|textured|tc\b/.test(s)) mat='TC/DW';
+    else if(/plaster/.test(s)) mat='Plaster';
+    else if(/tile|ceramic/.test(s)) mat='CT';
+    else if(/vinyl|vsf|lino/.test(s)) mat='VSF';
+    else if(/concrete/.test(s)) mat='Concrete';
+    else if(/wood panel|panel/.test(s)) mat='Wood Panel';
+    else if(/drywall|dw\b/.test(s)) mat='DW';
+    out.push({loc,type,mat,contam});
+  }
+  return out;
+}
+function nextSampleId(type){
+  const pre = type==='A'?'S':(type==='L'?'L':'X');
+  const n = S.samples.filter(x=>x.type===type).map(x=>+x.id.replace(/^[A-Za-z]+/,'')).reduce((a,b)=>Math.max(a,b),0)+1;
+  return pre + String(n).padStart(2,'0');
+}
+function autoDraw(){
+  const targets = S.rooms.filter(r=>r.x==null);
+  if(!targets.length){ flash('No notes-only rooms to draw — add rooms here first, or they are already drawn'); return; }
+  const plan = targets.map(r=>({r, found: parseSamples(r.notes)}));
+  const lines = plan.map(p=>`<div class="sorow"><b>Room ${p.r.num}${p.r.name?' · '+p.r.name:''}</b> — box + ${p.found.length} sample${p.found.length===1?'':'s'}${p.found.length?' ('+p.found.map(f=>(f.type==='A'?'●':f.type==='L'?'▲':'◆')+' '+f.loc).join(', ')+')':''}</div>`).join('');
+  openSheet(`<h2>✨ Auto-Draw from notes <span style="font-size:12px;color:#b30000;">BETA</span></h2>
+    <p style="font-size:13.5px;color:#b30000;font-weight:bold;">Beta feature — it reads your notes as best it can, but placements can be wrong. Always check and correct the result. Drawing it yourself is the reliable path.</p>
+    <p style="font-size:13.5px;color:#555;">Here's what I read:</p>
+    ${lines}`,
+    ()=>{
+      pushUndo();
+      let baseY = CELL*3;
+      for(const w of S.walls) baseY = Math.max(baseY, Math.max(w.y1,w.y2) + CELL*3);
+      const RW = 9*CELL, RH = 7*CELL, GAP = 2*CELL;
+      plan.forEach((p,i)=>{
+        const col=i%3, row=Math.floor(i/3);
+        const x1 = CELL*2 + col*(RW+GAP), y1 = baseY + row*(RH+GAP);
+        const x2 = x1+RW, y2 = y1+RH;
+        S.walls.push({x1,y1,x2,y2:y1},{x1:x2,y1,x2,y2},{x1:x2,y1:y2,x2:x1,y2},{x1,y1:y2,x2:x1,y2:y1});
+        p.r.x = (x1+x2)/2; p.r.y = (y1+y2)/2;
+        const midX=(x1+x2)/2, midY=(y1+y2)/2;
+        const spots = { left:[x1+CELL,midY], right:[x2-CELL,midY], front:[midX,y1+CELL],
+                        back:[midX,y2-CELL], ceiling:[midX-CELL,midY-CELL], floor:[midX+CELL,midY+CELL],
+                        center:[midX,midY-CELL] };
+        const used = {};
+        for(const f of p.found){
+          used[f.loc] = (used[f.loc]||0);
+          let [sx,sy] = spots[f.loc];
+          // nudge repeats along the wall so they don't stack
+          if(f.loc==='left'||f.loc==='right') sy += used[f.loc]*CELL*1.5 - CELL*0.5;
+          else sx += used[f.loc]*CELL*1.5 - CELL*0.5;
+          used[f.loc]++;
+          S.samples.push({ x:snap(sx), y:snap(sy), type:f.type, id:nextSampleId(f.type),
+            suffix:f.type==='A'?'a-c':'', material:f.mat, desc:f.loc==='center'?'':f.loc,
+            contam:f.type==='O'?(f.contam||'Other'):'', result:'pending' });
+        }
+      });
+      draw(); refreshNotes(); refreshResults();
+      document.querySelector('button[data-tab=draw]').click();
+      flash(`Auto-drew ${plan.length} room${plan.length===1?'':'s'} — drag, edit, or erase anything`);
+    });
+  const okBtn=document.getElementById('ok'); if(okBtn) okBtn.textContent='Draw it';
+}
+
+/* page 2: field notes + sign-off sheet */
+function renderNotesPage(){
+  const W=1700, H=1057, k=1.2, px=v=>v*k;
+  const c=document.createElement('canvas'); c.width=W; c.height=H;
+  const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,W,H);
+  drawLogo(g, px(58), px(30), px(120));
+  g.fillStyle='#000'; g.font=`bold ${px(24)}px Arial`;
+  g.fillText('FIELD NOTES & SIGN-OFF',px(200),px(68));
+  g.font=`${px(15)}px Arial`; g.fillStyle='#444';
+  g.fillText(`${S.header.project||''}   ${S.header.address||''}   ${S.header.date||''}`+
+    `${S.header.pm?'   PM: '+S.header.pm:''}${S.header.tech?'   Tech: '+S.header.tech:''}`,px(200),px(94));
+  g.strokeStyle='#000'; g.lineWidth=px(2);
+  g.beginPath(); g.moveTo(px(60),px(112)); g.lineTo(px(1355),px(112)); g.stroke();
+
+  const wrap=(t,maxW,f)=>{ g.font=f; const out=[]; let line='';
+    for(const w of String(t).split(/\s+/)){ const test=line?line+' '+w:w;
+      if(g.measureText(test).width>px(maxW) && line){ out.push(line); line=w; } else line=test; }
+    if(line) out.push(line); return out; };
+
+  const cols=[{x:60,y:140},{x:715,y:140}]; let ci=0;
+  const CW=600, LIMIT=670;
+  const put=(txt,f,color,gap)=>{
+    g.fillStyle=color; const lines=wrap(txt,CW,f);
+    for(const ln of lines){
+      if(cols[ci].y>LIMIT && ci===0) ci=1;
+      if(cols[ci].y>LIMIT){ g.font=`italic ${px(13)}px Arial`; g.fillStyle='#888';
+        g.fillText('(continued in data file...)',px(cols[ci].x),px(LIMIT+18)); return false; }
+      g.font=f; g.fillStyle=color;
+      g.fillText(ln,px(cols[ci].x),px(cols[ci].y));
+      cols[ci].y+=gap;
+    }
+    return true;
+  };
+  if(S.gnotes){
+    put('GENERAL','bold '+px(15)+'px Arial','#1C4E9E',22);
+    put(S.gnotes,px(14)+'px Arial','#000',19); cols[ci].y+=10;
+  }
+  const rooms=[...S.rooms].sort((a,b)=>+a.num-+b.num);
+  for(const r of rooms){
+    const fin=[r.w?'W: '+r.w:'',r.c?'C: '+r.c:'',r.f?'F: '+r.f:''].filter(Boolean).join('   ');
+    if(!put(`${r.num}. ${r.name||'—'}${r.silica?'  [SiO₂]':''}`,`bold ${px(15)}px Arial`,'#000',20)) break;
+    if(fin) if(!put(fin,`${px(12.5)}px Arial`,'#666',17)) break;
+    if(r.notes) if(!put(r.notes,`${px(13.5)}px Arial`,'#222',18)) break;
+    cols[ci].y+=9;
+  }
+  // sign-off block
+  let sy=712;
+  g.strokeStyle='#000'; g.lineWidth=px(2);
+  g.beginPath(); g.moveTo(px(60),px(sy)); g.lineTo(px(1355),px(sy)); g.stroke();
+  g.fillStyle='#000'; g.font=`bold ${px(17)}px Arial`; g.fillText('SIGN-OFF',px(60),px(sy+28));
+  if(S.lastEdit){ g.font=`${px(13)}px Arial`; g.fillStyle='#555'; g.textAlign='right';
+    g.fillText(`Status: ${S.status||'Draft'}   ·   Last edited by ${S.lastEdit.name} (${S.lastEdit.role}) — ${S.lastEdit.when}`, px(1355), px(sy+28));
+    g.textAlign='left'; g.fillStyle='#000'; }
+  g.font=`${px(14.5)}px Arial`;
+  if(S.signoffs.length){
+    S.signoffs.slice(0,4).forEach((s,i)=>{
+      g.fillText(`${i+1}.  ${s.name}   —   ${s.role}   —   ${s.date}`,px(80),px(sy+52+i*22));
+    });
+  } else {
+    g.fillStyle='#888'; g.font=`italic ${px(14)}px Arial`;
+    g.fillText('Unsigned — field technician signs first; later editors (manager / lab technician) add their own.',px(80),px(sy+52));
+  }
+  return c;
+}
+/* minimal MULTI-PAGE PDF wrapping canvases as JPEGs — no libraries, works offline.
+   Pages = 11x8.5" landscape (792x612 pt), image centered with margins. */
+function canvasToPdf(cvsIn){
+  const cvs = Array.isArray(cvsIn) ? cvsIn : [cvsIn];
+  const pageW=792, pageH=612;
+  const objs=['<</Type/Catalog/Pages 2 0 R>>',
+    `<</Type/Pages/Kids[${cvs.map((_,i)=>`${3+i*3} 0 R`).join(' ')}]/Count ${cvs.length}>>`];
+  for(const c of cvs){
+    const jpeg=atob(c.toDataURL('image/jpeg',0.92).split(',')[1]);
+    const W=c.width, H=c.height;
+    let imgW=pageW-36, imgH=imgW*H/W;
+    if(imgH>pageH-36){ imgH=pageH-36; imgW=imgH*W/H; }
+    const ix=((pageW-imgW)/2).toFixed(2), iy=((pageH-imgH)/2).toFixed(2);
+    const pid=objs.length+1;
+    const stream=`q ${imgW.toFixed(2)} 0 0 ${imgH.toFixed(2)} ${ix} ${iy} cm /Im1 Do Q`;
+    objs.push(`<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${pageW} ${pageH}]/Resources<</XObject<</Im1 ${pid+2} 0 R>>>>/Contents ${pid+1} 0 R>>`);
+    objs.push(`<</Length ${stream.length}>>stream\n${stream}\nendstream`);
+    objs.push(`<</Type/XObject/Subtype/Image/Width ${W}/Height ${H}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${jpeg.length}>>stream\n${jpeg}\nendstream`);
+  }
+  let pdf='%PDF-1.4\n'; const offs=[];
+  objs.forEach((o,i)=>{ offs.push(pdf.length); pdf+=`${i+1} 0 obj${o} endobj\n`; });
+  const xref=pdf.length;
+  pdf+=`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`+
+    offs.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')+
+    `trailer<</Size ${objs.length+1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`;
+  const bytes=new Uint8Array(pdf.length);
+  for(let i=0;i<pdf.length;i++) bytes[i]=pdf.charCodeAt(i)&0xff;
+  return bytes;
+}
+document.getElementById('dlJson').onclick=async()=>dl((await getFiles())[1]);
+function dl(f){ const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=f.name; a.click(); }
+document.getElementById('loadJson').onclick=()=>document.getElementById('jsonFile').click();
+document.getElementById('jsonFile').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  f.text().then(t=>{ try{ pushUndo(); loadJobObj(JSON.parse(t)); draw(); refreshResults(); refreshNotes(); renderPreview(); alert('Job loaded.'); }
+    catch(err){ alert('Could not read that file.'); } });
+};
+
+/* light autosave (best-effort; app works fully without it) */
+try{
+  const saved=localStorage.getItem('apexFieldSketch');
+  if(saved){ loadJobObj(JSON.parse(saved)); }
+  setInterval(()=>{ try{ localStorage.setItem('apexFieldSketch', jobJson()); }catch(e){} }, 4000);
+}catch(e){}
+
+/* ===== cloud auto-backup (Google Apps Script endpoint) ===== */
+let bkUrl='';
+try{ bkUrl=localStorage.getItem('apexBackupUrl')||''; }catch(e){}
+let lastBackup='';
+setInterval(()=>{
+  if(!bkUrl) return;
+  const now=JSON.stringify(S);
+  if(now===lastBackup) return;
+  try{
+    fetch(bkUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({file:fileBase(),savedAt:new Date().toISOString(),data:{...S,_photos:PHOTOS}})})
+    .then(()=>{ lastBackup=now;
+      const el=document.getElementById('bkstatus');
+      if(el) el.textContent='Backed up to Drive at '+new Date().toLocaleTimeString();
+    }).catch(()=>{});
+  }catch(e){}
+}, 45000);
+
+normalize(); fit(); refreshResults();
+if(!EDITOR) setTimeout(identitySheet, 600);
+/* first-open tour: offered once, after identity is set */
+try{
+  if(!localStorage.getItem('apexTourDone')){
+    const waitId = setInterval(()=>{
+      if(EDITOR && modal.style.display!=='block'){ clearInterval(waitId); startTour(); }
+    }, 800);
+  }
+}catch(e){}
+</script>
+</body>
+</html>
