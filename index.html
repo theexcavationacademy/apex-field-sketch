@@ -1704,28 +1704,31 @@ function renderFinal(){
   const rowH = Math.min(27, 146/nRows);
   const labF = Math.min(17, rowH*0.66), posF = Math.min(15.5, rowH*0.6);
   let yy = 700 + rowH*0.82;
+  // legend text must never cross the divider at x=300 — shrink each line to fit its column
+  const LEGR = px(293);
+  const legFit = (t,x,base)=>{ let f=base; g.font=`${px(f)}px Arial`;
+    while(g.measureText(t).width > LEGR - x && f>7){ f-=0.5; g.font=`${px(f)}px Arial`; } };
+  const lab=(t)=>{ legFit(t, px(102), labF); g.fillText(t, px(102), px(yy+labF*0.34)); yy+=rowH; };
+  const pos=(t,col)=>{ g.fillStyle=col; legFit(t, px(104), posF); g.fillText(t, px(104), px(yy-rowH*0.28)); yy+=rowH*0.8; g.fillStyle='#000'; };
   g.fillStyle='#000';
   g.beginPath(); g.arc(px(87),px(yy),px(7.5),0,7); g.fill();
-  g.font=`${px(labF)}px Arial`; g.fillText('Asbestos Sample Location',px(102),px(yy+labF*0.34)); yy+=rowH;
-  if(found.has('asbestos')){ g.fillStyle='#E00000'; g.font=`${px(posF)}px Arial`; g.fillText('-Positive Result',px(104),px(yy-rowH*0.28)); yy+=rowH*0.8; }
-  g.fillStyle='#000';
+  lab('Asbestos Sample Location');
+  if(found.has('asbestos')) pos('-Positive Result','#E00000');
   g.beginPath(); g.moveTo(px(87),px(yy-7.5)); g.lineTo(px(79),px(yy+7)); g.lineTo(px(95),px(yy+7)); g.closePath(); g.fill();
-  g.font=`${px(labF)}px Arial`; g.fillText('Lead Sample Location',px(102),px(yy+labF*0.34)); yy+=rowH;
-  if(found.has('lead')){ g.fillStyle='#00A040'; g.font=`${px(posF)}px Arial`; g.fillText('-Positive Result',px(104),px(yy-rowH*0.28)); yy+=rowH*0.8; }
+  lab('Lead Sample Location');
+  if(found.has('lead')) pos('-Positive Result','#00A040');
   if(hasO){
-    g.fillStyle='#000';
     g.beginPath(); g.moveTo(px(87),px(yy-8)); g.lineTo(px(94),px(yy)); g.lineTo(px(87),px(yy+8)); g.lineTo(px(80),px(yy)); g.closePath(); g.fill();
-    g.font=`${px(labF)}px Arial`; g.fillText('Other Contaminant Sample',px(102),px(yy+labF*0.34)); yy+=rowH;
+    lab('Other Contaminant Sample');
   }
-  if(found.has('vermiculite')){ g.fillStyle='#E07800'; g.font=`${px(posF)}px Arial`; g.fillText('-Vermiculite Positive',px(104),px(yy-rowH*0.28)); yy+=rowH*0.8; }
-  if(found.has('other')){ g.fillStyle='#7A00B0'; g.font=`${px(posF)}px Arial`; g.fillText('-Other Contaminant Positive',px(104),px(yy-rowH*0.28)); yy+=rowH*0.8; }
+  if(found.has('vermiculite')) pos('-Vermiculite Positive','#E07800');
+  if(found.has('other')) pos('-Other Contaminant Positive','#7A00B0');
   if(hasStairs){
     g.strokeStyle='#000'; g.lineWidth=px(1.4);
     for(let i=0;i<4;i++){ g.beginPath(); g.moveTo(px(80+i*5),px(yy-7)); g.lineTo(px(80+i*5),px(yy+7)); g.stroke(); }
-    g.fillStyle='#000'; g.font=`${px(labF)}px Arial`; g.fillText('Stairs',px(102),px(yy+labF*0.34)); yy+=rowH;
+    lab('Stairs');
   }
-  g.fillStyle='#000'; g.font=`${px(posF)}px Arial`;
-  for(const ln of extraLines){ g.fillText(ln.slice(0,30),px(80),px(yy+2)); yy+=rowH*0.8; }
+  for(const lx of extraLines){ legFit(lx, px(80), posF); g.fillText(lx, px(80), px(yy+2)); yy+=rowH*0.8; }
   g.fillStyle='#000';
   const H2=S.header;
   const fitTxt=(t,maxW,base)=>{ let f=base; g.font=`${px(f)}px Arial`;
