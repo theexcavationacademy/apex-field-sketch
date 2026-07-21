@@ -83,6 +83,15 @@
   #ok { background:var(--blue); color:#fff; } #cancel { background:#eee; color:#444; } #del { background:#fbe3e3; color:#b30000; flex:0 0 90px !important; }
   .chk { display:flex; align-items:center; gap:8px; margin-top:10px; }
   .chk input { width:auto !important; transform:scale(1.4); }
+  /* required-field validation (red-box review) */
+  .reqmiss { border:2px solid var(--red) !important; background:#fff5f5 !important; }
+  .reqnote { color:var(--red); font-size:11px; font-weight:bold; margin:-2px 0 6px; }
+  #reviewBox { border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:14px; }
+  #reviewBox.rb-red { background:#fdeaea; border:1.5px solid var(--red); color:#8a1010; }
+  #reviewBox.rb-green { background:#e8f6ee; border:1.5px solid #1a8a4a; color:#0f5c30; }
+  #reviewBox h4 { margin:0 0 6px; font-size:14.5px; }
+  #reviewBox ul { margin:4px 0 8px; padding-left:20px; }
+  #reviewBox button { background:var(--red); color:#fff; border:none; border-radius:8px; padding:9px 14px; font-size:13.5px; font-weight:bold; }
   /* team sign-in gate */
   .lgl { display:block; font-size:12px; font-weight:bold; color:#555; margin:10px 0 3px; }
   .lgi { width:100%; padding:10px; border:1.5px solid #ccc; border-radius:8px; font-size:15px; box-sizing:border-box; }
@@ -153,7 +162,8 @@
   <div id="tools">
     <button data-tool="box" class="on"><span class="g">▢</span>Room Box</button>
     <button data-tool="hall"><span class="g">═</span>Hallway</button>
-    <button data-tool="wall"><span class="g">▭</span>Wall</button>
+    <button data-tool="wallh"><span class="g">▭</span>Wall H</button>
+    <button data-tool="wallv"><span class="g">▯</span>Wall V</button>
     <button data-tool="door"><span class="g">◫</span>Door</button>
     <button data-tool="stairs"><span class="g">≣</span>Stairs</button>
     <button data-tool="asb"><span class="g">●</span>Asb.</button>
@@ -232,6 +242,7 @@
   </div>
 
   <div class="panel" id="p-export">
+    <div id="reviewBox"></div>
     <h3>Job Status</h3>
     <select id="jstatus" style="width:100%;padding:11px;border:1.5px solid #ccc;border-radius:9px;font-size:15px;font-weight:bold;">
       <option>Draft</option><option>Field Complete</option><option>Lab Results Entered</option><option>Reviewed — Final</option>
@@ -464,6 +475,7 @@ function rectAt(p){
 }
 function roomRect(r){ return rectAt(r); }
 function smartLabelPos(r, c, sc){
+  if(r.lblManual) return {x:r.x, y:r.y};   // user dragged the label with Move — stop auto-shuffling it
   const rect = roomRect(r);
   if(!rect) return {x:r.x, y:r.y};
   // measure the FULL label block (number + name + finishes) so all of it stays inside the walls
@@ -569,7 +581,13 @@ function paintContent(c, sc, forExport){
     const lbl = dispId(s), tw = c.measureText(lbl).width, lw = tw + 16*sc;
     const rect = rectAt(s);
     let mode = 'left';
-    if(rect){
+    if(s.lblMode){
+      // user picked a fixed side via the quick-result sheet — stop auto-shuffling it
+      mode = s.lblMode;
+      if(mode==='above' || mode==='below'){
+        var cxl = rect ? Math.max(rect.xl + tw/2 + 6, Math.min(rect.xr - tw/2 - 6, s.x)) : s.x;
+      }
+    } else if(rect){
       const ls = s.x - rect.xl, rs = rect.xr - s.x;
       if(ls >= lw + 6) mode = 'left';
       else if(rs >= lw + 6) mode = 'right';
@@ -611,7 +629,7 @@ wrap.addEventListener('pointerdown', e => {
   } else if(pointers.size === 1){
     downScr = {x:e.offsetX, y:e.offsetY}; movedFar = false;
     const wpt = toWorld(e.offsetX, e.offsetY);
-    if(tool==='wall' || tool==='door' || tool==='box' || tool==='hall' || tool==='stairs'){ dragStart = { x: snap(wpt.x), y: snap(wpt.y) }; }
+    if(tool==='wallh' || tool==='wallv' || tool==='door' || tool==='box' || tool==='hall' || tool==='stairs'){ dragStart = { x: snap(wpt.x), y: snap(wpt.y) }; }
     else if(tool==='move'){
       dragStart = wpt; moveTarget = null;
       // 1. stamps first (samples / room labels / text)
@@ -650,9 +668,11 @@ wrap.addEventListener('pointermove', e => {
     draw(); return;
   }
   const wpt = toWorld(e.offsetX, e.offsetY);
-  if(dragStart && (tool==='wall'||tool==='door'||tool==='hall'||tool==='stairs')){
+  if(dragStart && (tool==='wallh'||tool==='wallv'||tool==='door'||tool==='hall'||tool==='stairs')){
     let x2 = snap(wpt.x), y2 = snap(wpt.y);
-    if(Math.abs(x2-dragStart.x) > Math.abs(y2-dragStart.y)) y2 = dragStart.y; else x2 = dragStart.x; // ortho
+    if(tool==='wallh') y2 = dragStart.y;               // Wall H: always horizontal, orientation locked
+    else if(tool==='wallv') x2 = dragStart.x;          // Wall V: always vertical, orientation locked
+    else if(Math.abs(x2-dragStart.x) > Math.abs(y2-dragStart.y)) y2 = dragStart.y; else x2 = dragStart.x; // door/hall/stairs: auto-ortho
     tempSeg = { x1:dragStart.x, y1:dragStart.y, x2, y2 };
     draw();
   } else if(dragStart && tool==='box'){
@@ -724,11 +744,13 @@ wrap.addEventListener('pointerup', e => {
     }
     tempSeg = null; dragStart = null; draw(); return;
   }
-  if(tempSeg && (tool==='wall'||tool==='door')){
+  if(tempSeg && (tool==='wallh'||tool==='wallv'||tool==='door')){
     if(Math.hypot(tempSeg.x2-tempSeg.x1, tempSeg.y2-tempSeg.y1) >= CELL/2){
       pushUndo();
-      if(tool==='wall'){
+      if(tool==='wallh'||tool==='wallv'){
         const a=smartSnap({x:tempSeg.x1,y:tempSeg.y1}), b=smartSnap({x:tempSeg.x2,y:tempSeg.y2});
+        // re-lock orientation after smart-snap, so a nearby corner can't flip a Wall H/V back to guessed
+        if(tool==='wallh') b.y = a.y; else b.x = a.x;
         S.walls.push({x1:a.x,y1:a.y,x2:b.x,y2:b.y});
       } else {
         S.doors.push({...tempSeg});
@@ -737,11 +759,12 @@ wrap.addEventListener('pointerup', e => {
     }
     tempSeg = null;
   }
-  // Wall tool TAP: add ONE grid-square of wall on the nearest grid line (mirror of the one-square eraser)
-  if(tool==='wall' && !movedFar){
+  // Wall H/V TAP: add ONE grid-square of wall on the nearest grid line, orientation locked to the tool
+  // (mirror of the one-square eraser) — no more guessing from tap position, which used to flip on a wobble
+  if((tool==='wallh'||tool==='wallv') && !movedFar){
     const gy = snap(wpt.y), gx = snap(wpt.x);
     pushUndo();
-    if(Math.abs(wpt.y-gy) <= Math.abs(wpt.x-gx)){
+    if(tool==='wallh'){
       const x0 = Math.floor(wpt.x/CELL)*CELL;
       S.walls.push({x1:x0, y1:gy, x2:x0+CELL, y2:gy});
     } else {
@@ -776,6 +799,10 @@ wrap.addEventListener('pointerup', e => {
       for(const d of moveTarget.doors){ d.x1=snap(d.x1); d.y1=snap(d.y1); d.x2=snap(d.x2); d.y2=snap(d.y2); }
       for(const s of moveTarget.segs){ s.x1=snap(s.x1); s.y1=snap(s.y1); s.x2=snap(s.x2); s.y2=snap(s.y2); }
       draw();
+    } else if(moveTarget.kind==='room'){
+      // a real drag of a room's number stamp locks its label there — stops the auto-shuffle
+      // that used to re-place it as soon as anything nearby (a sample, another room) changed
+      moveTarget.obj.lblManual = true; draw();
     }
   }
   dragStart = null; moveTarget = null;
@@ -1088,12 +1115,15 @@ function editRoom(r){
       ${surfGroup('c','Ceiling (C)',r.c)}
       ${surfGroup('f','Floor (F)',r.f)}
     </div>
-    <div class="chk"><input type="checkbox" id="f-sio2" ${r.silica?'checked':''}><label style="margin:0">SiO&#8322; / dust contamination evident in this room</label></div>`,
+    <div class="chk"><input type="checkbox" id="f-sio2" ${r.silica?'checked':''}><label style="margin:0">SiO&#8322; / dust contamination evident in this room</label></div>
+    ${r.lblManual ? `<button type="button" id="f-autopos" class="micb" style="margin-top:10px;">↺ Auto-position label again</button>` : ''}`,
     ()=>{ pushUndo();
       r.num=val('f-num'); r.name=val('f-name'); r.w=surfVal('w'); r.c=surfVal('c'); r.f=surfVal('f');
       r.silica=document.getElementById('f-sio2').checked; draw(); refreshNotes(); },
     ()=>{ pushUndo(); (r.photos||[]).forEach(ph=>delete PHOTOS[ph.pid]); S.rooms.splice(S.rooms.indexOf(r),1); draw(); refreshNotes(); });
   wireSurf();
+  const apBtn = document.getElementById('f-autopos');
+  if(apBtn) apBtn.onclick = () => { pushUndo(); delete r.lblManual; draw(); modal.style.display='none'; flash('Label auto-position restored'); };
 }
 function editSample(s){
   openSheet(`<h2>Edit ${s.type==='A'?'● Asbestos':(s.type==='L'?'▲ Lead':'◆ Other contaminant')} sample</h2>
@@ -1284,13 +1314,26 @@ function quickResult(s){
   const btn=(k,m)=>{ const on=['pending','negative'].includes(k);
     return `<button data-r="${k}" style="flex:1 1 46%;padding:15px 8px;border-radius:10px;border:2.5px solid ${m.c};
       background:${on?'#fff':m.c};color:${on?m.c:'#fff'};font-weight:bold;font-size:14px;">${m.label}</button>`; };
+  const posBtn=(k,label)=>`<button data-p="${k}" style="flex:1 1 21%;padding:9px 4px;border-radius:8px;
+    border:2px solid var(--blue);background:${s.lblMode===k?'var(--blue)':'#fff'};color:${s.lblMode===k?'#fff':'var(--blue)'};
+    font-weight:bold;font-size:12.5px;">${label}</button>`;
   openSheet(`<h2>${symChar(s)} ${dispId(s)} — set result</h2>
     <div style="display:flex;flex-wrap:wrap;gap:9px;margin-top:6px;">
       ${validResults(s).map(k=>btn(k,RESULT_META[k])).join('')}
-    </div>`, null);
+    </div>
+    <label style="margin-top:14px;">Label position</label>
+    <div style="display:flex;flex-wrap:wrap;gap:7px;">
+      ${posBtn('left','Left')}${posBtn('right','Right')}${posBtn('above','Above')}${posBtn('below','Below')}
+    </div>
+    ${s.lblMode ? `<button type="button" id="f-autopos-s" class="micb" style="margin-top:9px;">↺ Auto-position again</button>` : ''}`, null);
   sheet.querySelectorAll('button[data-r]').forEach(b=>b.onclick=()=>{
     pushUndo(); s.result=b.dataset.r; modal.style.display='none'; draw(); refreshResults();
   });
+  sheet.querySelectorAll('button[data-p]').forEach(b=>b.onclick=()=>{
+    pushUndo(); s.lblMode=b.dataset.p; draw(); quickResult(s);   // re-open so the highlighted button updates
+  });
+  const apBtn = document.getElementById('f-autopos-s');
+  if(apBtn) apBtn.onclick = () => { pushUndo(); delete s.lblMode; draw(); modal.style.display='none'; flash('Label auto-position restored'); };
 }
 
 /* ===== Save + New Job (with save-first warning) ===== */
@@ -1324,10 +1367,11 @@ function resetJob(){
   PHOTOS={};
   undoStack.length=0; redoStack.length=0;
   draw(); refreshResults(); refreshNotes(); flash('New job started');
+  setTimeout(()=>openJobInfo(false), 150);   // job info first — get the project details in up front
 }
 document.getElementById('saveBtn').onclick = saveMenu;
 /* ===== HELP / SOP / FEEDBACK ===== */
-const APP_VERSION = 'v31';
+const APP_VERSION = 'v33';
 const SOP_HTML = `
 <h2>? Help — APEX Field Sketch ${APP_VERSION}</h2>
 <div style="max-height:52vh;overflow-y:auto;font-size:13.5px;line-height:1.5;color:#333;">
@@ -1335,7 +1379,8 @@ const SOP_HTML = `
 <p><b>1. Job Info first.</b> Tap Job Info (top right). Fill project number, address with units, client,
 your initials, the PM, build date, and scope. This feeds every export automatically.</p>
 <p><b>2. Draw the map.</b> Room Box: drag diagonally — a whole room appears. Hallway: drag between rooms —
-both corridor walls draw and connect. Wall &amp; Door for details, Stairs for stairwells.
+both corridor walls draw and connect. Wall H / Wall V for details (H always draws horizontal, V always
+vertical — pick the one you need, no more guessing), Door, Stairs for stairwells.
 Made a mistake? Erase removes one wall square per tap; Undo/Redo are always there.
 To resize a room: Move tool, drag any wall — corners stay attached.</p>
 <p><b>3. Number the rooms.</b> Room tool, tap inside each room. Give it a name and its wall/ceiling/floor
@@ -1426,7 +1471,7 @@ document.getElementById('helpBtn').onclick = () => {
 const TOUR_STEPS = [
   { sel:'#jobBtn',  text:'START HERE — Job Info: project number, address, client, PM, your initials. Fill it once; every export uses it.' },
   { sel:'#tabs',    text:'The tabs: DRAW the map · NOTES per room (type or dictate) · LEGEND is the key to every symbol · RESULTS is where lab results get entered · EXPORT to save, sign off and share.' },
-  { sel:'#tools',   text:'Drawing: drag a ROOM BOX diagonally for a whole room. HALLWAY connects rooms. STAIRS, WALL & DOOR for details. Drop ●▲◆ samples where you sampled. ROOM numbers each room. MOVE resizes rooms (drag a wall — corners stay attached). ERASE rubs out one wall square.' },
+  { sel:'#tools',   text:'Drawing: drag a ROOM BOX diagonally for a whole room. HALLWAY connects rooms. STAIRS, WALL H (always horizontal), WALL V (always vertical) & DOOR for details. Drop ●▲◆ samples where you sampled. ROOM numbers each room. MOVE resizes rooms (drag a wall — corners stay attached). ERASE rubs out one wall square.' },
   { sel:'#wrap',    text:'Rooms show their number, name and finishes. The 📷 in each room corner opens your camera — photos file themselves to that room. Tap a sample with Move to set its lab result colour. Everything here can be edited from Notes too.' },
   { sel:'#saveBtn', text:'SAVE gives you the editable Job File, the PDF drawing, or a PNG image. NEW warns you to save first so nothing is ever lost.' },
   { sel:'#helpBtn', text:'And this ? button is always here — the full SOP walkthrough, tips, and a box to send us your questions and ideas. That is the tour!' }
@@ -1540,7 +1585,21 @@ document.getElementById('newBtn').onclick = () => {
 };
 
 /* job header form */
-document.getElementById('jobBtn').onclick = () => {
+/* ===== required job-info fields + red-box validation (v33) =====
+   Design principle: this NEVER blocks Save/draft work — it only gates marking a job complete/reviewed,
+   and gives the PM a clear final-review checklist on the Export tab. */
+const REQUIRED_JOB_FIELDS = [
+  {key:'project',    label:'Project No.',       input:'f-p'},
+  {key:'address',    label:'Project address',   input:'f-a'},
+  {key:'client',     label:'Client',            input:'f-cl'},
+  {key:'technician', label:'Technician',        input:'f-te'}
+];
+function missingRequired(){
+  const H = S.header || {};
+  const val = {project:H.project, address:H.address, client:H.client, technician:H.tech};
+  return REQUIRED_JOB_FIELDS.filter(f => !(val[f.key]||'').trim());
+}
+function openJobInfo(highlightMissing){
   const H=S.header;
   openSheet(`<h2>Job Info</h2>
     <div class="row2"><div><label>Project No.</label><input id="f-p" value="${H.project}" placeholder="HOM26-214"></div>
@@ -1556,7 +1615,8 @@ document.getElementById('jobBtn').onclick = () => {
       <input id="f-geo" value="${H.geo||''}" placeholder="tap the button on site" style="flex:1;">
       <button type="button" id="geoBtn" class="micb" style="flex:0 0 auto;">📍 Capture</button>
     </div>`,
-    ()=>{ S.header={project:val('f-p'),date:val('f-d'),address:val('f-a'),client:val('f-cl'),tech:val('f-te'),pm:val('f-pm'),bd:val('f-bd'),scope:val('f-sc'),geo:val('f-geo')}; });
+    ()=>{ S.header={project:val('f-p'),date:val('f-d'),address:val('f-a'),client:val('f-cl'),tech:val('f-te'),pm:val('f-pm'),bd:val('f-bd'),scope:val('f-sc'),geo:val('f-geo')};
+      renderReviewBox(); });
   document.getElementById('geoBtn').onclick=()=>{
     if(!navigator.geolocation){ alert('No GPS available in this browser.'); return; }
     const gb=document.getElementById('geoBtn'); gb.textContent='📍 ...';
@@ -1568,7 +1628,23 @@ document.getElementById('jobBtn').onclick = () => {
       alert('Could not get location — check location permission for your browser.'); },
     {enableHighAccuracy:true, timeout:10000});
   };
-};
+  if(highlightMissing){
+    const missing = missingRequired();
+    if(missing.length){
+      const note = document.createElement('div');
+      note.className = 'reqnote';
+      note.textContent = '⚠ Fill in the highlighted fields before this job can be marked complete/reviewed.';
+      sheet.insertBefore(note, sheet.querySelector('.btns'));
+      missing.forEach(f=>{
+        const el = document.getElementById(f.input);
+        if(!el) return;
+        el.classList.add('reqmiss');
+        el.addEventListener('input', ()=> el.classList.remove('reqmiss'), {once:true});
+      });
+    }
+  }
+}
+document.getElementById('jobBtn').onclick = () => openJobInfo(false);
 
 /* ================= tabs & tools ================= */
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
@@ -1583,7 +1659,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   if(t==='notes') refreshNotes();
   if(t==='draw') fit();
   if(t==='results') refreshResults();
-  if(t==='export'){ renderPreview(); refreshSignoffs(); refreshHistory();
+  if(t==='export'){ renderPreview(); refreshSignoffs(); refreshHistory(); renderReviewBox();
     document.getElementById('jstatus').value = S.status||'Draft';
     document.getElementById('legextra').value = S.legendExtra||''; }
 });
@@ -1593,7 +1669,9 @@ document.querySelectorAll('#tools button[data-tool]').forEach(b=>b.onclick=()=>{
   document.getElementById('hint').textContent = {
     box:'Drag diagonally — a whole room appears, corners auto-closed', hall:'Drag between rooms — both corridor walls draw at once',
     stairs:'Drag the run of the stairs — rails and rungs draw automatically',
-    wall:'TAP = one grid square of wall · press & drag = long wall', door:'Drag along a wall to cut a door opening',
+    wallh:'TAP = one grid square of horizontal wall · press & drag = long wall (always horizontal)',
+    wallv:'TAP = one grid square of vertical wall · press & drag = long wall (always vertical)',
+    door:'Drag along a wall to cut a door opening',
     room:'Tap inside a room to number it · tap an existing number to edit it', asb:'Tap to place ● asbestos · tap an existing sample to edit',
     lead:'Tap to place ▲ lead · tap an existing sample to edit',
     text:'Tap to add a text note · tap existing text to edit', note:'Tap inside a room to write/dictate its notes',
@@ -2007,7 +2085,31 @@ async function buildPhotoReport(){
   return zipStore(files);
 }
 document.getElementById('soBtn').onclick=addSignoff;
-document.getElementById('jstatus').onchange=e=>{ pushUndo(); S.status=e.target.value; renderPreview(); };
+function renderReviewBox(){
+  const el = document.getElementById('reviewBox');
+  if(!el) return;
+  const missing = missingRequired();
+  if(missing.length){
+    el.className = 'rb-red';
+    el.innerHTML = `<h4>⚠ Missing required job info</h4>
+      <ul>${missing.map(f=>`<li>${f.label}</li>`).join('')}</ul>
+      <button type="button" id="rb-jump">Fill these in now</button>`;
+    document.getElementById('rb-jump').onclick = () => openJobInfo(true);
+  } else {
+    el.className = 'rb-green';
+    el.innerHTML = `<h4>✓ Ready — all required job info is filled in</h4>`;
+  }
+}
+document.getElementById('jstatus').onchange=e=>{
+  const v = e.target.value;
+  if((v==='Field Complete' || v==='Reviewed — Final') && missingRequired().length){
+    e.target.value = S.status||'Draft';   // bounce back — never let the gated statuses stick with missing info
+    flash('⚠ Fill in required Job Info before marking this status');
+    openJobInfo(true);
+    return;
+  }
+  pushUndo(); S.status=v; renderPreview(); renderReviewBox();
+};
 document.getElementById('legextra').onchange=e=>{ pushUndo(); S.legendExtra=e.target.value; renderPreview(); };
 document.getElementById('gnotes') && (document.getElementById('gnotes').onchange=e=>{ S.gnotes=e.target.value; });
 document.getElementById('gmic').onclick=function(){ startDictation(document.getElementById('gnotes'), this); };
