@@ -31,11 +31,24 @@
   #tabs button.on { color:var(--blue); border-bottom-color:var(--blue); }
 
   /* toolbar */
-  #tools { display:flex; gap:6px; padding:7px 8px; background:#fff; border-bottom:1px solid #ddd; overflow-x:auto; }
+  #toolsWrap { position:relative; }
+  #tools { display:flex; gap:6px; padding:7px 8px; background:#fff; border-bottom:1px solid #ddd; overflow-x:auto; -webkit-overflow-scrolling:touch; }
   #tools button { flex:0 0 auto; min-width:54px; padding:7px 6px; border:1.5px solid #ccc; border-radius:8px;
                   background:#fff; font-size:12px; font-weight:bold; color:#333; }
   #tools button.on { border-color:var(--blue); background:#e8effc; color:var(--blue); }
   #tools button .g { display:block; font-size:17px; line-height:1; margin-bottom:2px; }
+  /* fade hints so it's obvious there are more tools off-screen — the toolbar has grown to 20 buttons,
+     wider than one phone screen in portrait, and a plain overflow:auto row gives no clue you can swipe */
+  .toolFade { position:absolute; top:0; bottom:1px; width:26px; pointer-events:none; opacity:0; transition:opacity .15s; z-index:2; }
+  .toolFade.show { opacity:1; }
+  .toolFade.left  { left:0;  background:linear-gradient(to right, #fff, rgba(255,255,255,0)); }
+  .toolFade.right { right:0; background:linear-gradient(to left,  #fff, rgba(255,255,255,0)); }
+  /* wider screens (PC/laptop/tablet): wrap onto extra rows instead of scrolling sideways — a mouse has no
+     swipe gesture, so a scrolling row is awkward there even though it's the right call on a phone */
+  @media (min-width:700px){
+    #tools { flex-wrap:wrap; overflow-x:visible; }
+    .toolFade { display:none; }
+  }
 
   /* canvas */
   #wrap { position:relative; flex:1; overflow:hidden; touch-action:none; background:#fdfdfb; }
@@ -159,23 +172,31 @@
     <button data-tab="export">Export</button>
   </div>
 
+  <div id="toolsWrap">
   <div id="tools">
     <button data-tool="box" class="on"><span class="g">▢</span>Room Box</button>
+    <button data-tool="room"><span class="g">1̲</span>Room</button>
     <button data-tool="hall"><span class="g">═</span>Hallway</button>
     <button data-tool="wallh"><span class="g">▭</span>Wall H</button>
     <button data-tool="wallv"><span class="g">▯</span>Wall V</button>
+    <button data-tool="walld"><span class="g">╱</span>Wall Diag</button>
     <button data-tool="door"><span class="g">◫</span>Door</button>
     <button data-tool="stairs"><span class="g">≣</span>Stairs</button>
+    <button data-tool="circle"><span class="g">○</span>Circle</button>
+    <button data-tool="fill"><span class="g">▧</span>Fill</button>
+    <button data-tool="import"><span class="g">🖼</span>Import</button>
     <button data-tool="asb"><span class="g">●</span>Asb.</button>
     <button data-tool="lead"><span class="g">▲</span>Lead</button>
     <button data-tool="oth"><span class="g">◆</span>Other</button>
-    <button data-tool="room"><span class="g">1̲</span>Room</button>
     <button data-tool="text"><span class="g">T</span>Text</button>
     <button data-tool="photo"><span class="g">📷</span>Photo</button>
     <button data-tool="move"><span class="g">✥</span>Move</button>
     <button data-tool="erase"><span class="g">⌫</span>Erase</button>
     <button id="undoBtn"><span class="g">↶</span>Undo</button>
     <button id="redoBtn"><span class="g">↷</span>Redo</button>
+  </div>
+  <div class="toolFade left" id="toolFadeL"></div>
+  <div class="toolFade right" id="toolFadeR"></div>
   </div>
 
   <div id="wrap"><canvas id="cv"></canvas><div id="hint">Drag diagonally — a whole room appears, corners auto-closed</div></div>
@@ -264,6 +285,7 @@
     <button class="exBtn alt" id="loadJson">Open Data File (office / lab results)</button>
     <input type="file" id="jsonFile" accept=".json" style="display:none">
     <input type="file" id="photoFile" accept="image/*" capture="environment" multiple style="display:none">
+    <input type="file" id="bgFile" accept="image/png,image/jpeg,image/jpg,application/pdf" style="display:none">
   </div>
 </div>
 
@@ -275,7 +297,7 @@
 const CELL = 28;                       // world px per grid cell
 let S = {                              // the job document
   header: { project:"", address:"", client:"", tech:"", pm:"", bd:"", scope:"", date: new Date().toLocaleDateString('en-CA') },
-  walls: [], doors: [], rooms: [], samples: [], texts: [], stairs: []
+  walls: [], doors: [], rooms: [], samples: [], texts: [], stairs: [], circles: [], fills: [], bg: null
 };
 let view = { x: -40, y: -40, z: 1 };
 let tool = "box", undoStack = [];
@@ -298,8 +320,8 @@ function recordEdit(){
   if(S.history.length>60) S.history.shift();
 }
 function pushUndo(){ undoStack.push(JSON.stringify(S)); redoStack.length = 0; if(undoStack.length>60) undoStack.shift(); recordEdit(); }
-function undo(){ if(undoStack.length){ redoStack.push(JSON.stringify(S)); S = JSON.parse(undoStack.pop()); draw(); refreshResults(); } else flash('Nothing to undo'); }
-function redo(){ if(redoStack.length){ undoStack.push(JSON.stringify(S)); S = JSON.parse(redoStack.pop()); draw(); refreshResults(); } else flash('Nothing to redo'); }
+function undo(){ if(undoStack.length){ redoStack.push(JSON.stringify(S)); S = JSON.parse(undoStack.pop()); selected=null; resizeDrag=null; objPinch=null; draw(); refreshResults(); } else flash('Nothing to undo'); }
+function redo(){ if(redoStack.length){ undoStack.push(JSON.stringify(S)); S = JSON.parse(redoStack.pop()); selected=null; resizeDrag=null; objPinch=null; draw(); refreshResults(); } else flash('Nothing to redo'); }
 
 /* sample result classification — field records WHERE, office classifies WHAT after the lab report */
 const RESULT_META = {
@@ -343,6 +365,21 @@ function normalize(){  // migrate older saves
   if(!Array.isArray(S.signoffs)) S.signoffs=[];
   if(!Array.isArray(S.history)) S.history=[];
   if(!Array.isArray(S.stairs)) S.stairs=[];
+  if(!Array.isArray(S.circles)) S.circles=[];
+  if(!Array.isArray(S.fills)) S.fills=[];
+  // older saves stored stairs as a segment {x1,y1,x2,y2}; migrate to the box model {x,y,w,h,rot}
+  S.stairs = S.stairs.map(st => {
+    if(st.x1!==undefined){
+      const x1=Math.min(st.x1,st.x2), x2=Math.max(st.x1,st.x2), y1=Math.min(st.y1,st.y2), y2=Math.max(st.y1,st.y2);
+      const w=Math.max(x2-x1, CELL*0.6), h=Math.max(y2-y1, CELL*0.6);
+      return { x:x1, y:y1, w, h, rot:0 };
+    }
+    if(st.rot===undefined) st.rot=0;
+    return st;
+  });
+  for(const c of S.circles){ if(c.rot===undefined) c.rot=0; }
+  for(const f of S.fills){ if(f.rot===undefined) f.rot=0; }
+  if(S.bg===undefined) S.bg=null;
   if(S.legendExtra===undefined) S.legendExtra='';
   if(!S.status) S.status='Draft';
 }
@@ -418,8 +455,179 @@ function fit(){ cv.width = wrap.clientWidth * devicePixelRatio; cv.height = wrap
   cv.style.width = wrap.clientWidth+'px'; cv.style.height = wrap.clientHeight+'px'; draw(); }
 window.addEventListener('resize', fit);
 
+/* toolbar scroll fades: the button row is wider than one phone screen (20 tools) — show a soft
+   edge shadow whenever there's more to swipe to, so it isn't just a "why does it stop at Undo?" mystery */
+const toolsEl = document.getElementById('tools'), toolFadeL = document.getElementById('toolFadeL'), toolFadeR = document.getElementById('toolFadeR');
+function updateToolFades(){
+  const maxScroll = toolsEl.scrollWidth - toolsEl.clientWidth;
+  toolFadeL.classList.toggle('show', toolsEl.scrollLeft > 4);
+  toolFadeR.classList.toggle('show', maxScroll > 4 && toolsEl.scrollLeft < maxScroll - 4);
+}
+toolsEl.addEventListener('scroll', updateToolFades);
+window.addEventListener('resize', updateToolFades);
+window.addEventListener('orientationchange', () => setTimeout(updateToolFades, 200));
+setTimeout(updateToolFades, 50);   // after first layout settles
+
 /* ================= drawing (screen) ================= */
 let tempSeg = null, tempRect = null;
+let fillPref = { color:'#e53935', mode:'solid' };   // last-used fill style, reused for the next area drawn
+/* ===== imported background plan (photo/scan of a client's existing drawing) =====
+   BG_SRC (the actual image bytes) is kept OUTSIDE S, same reasoning as PHOTOS: keeps undo snapshots and
+   the live job JSON cheap. S.bg only carries lightweight placement numbers (position/size/native pixels),
+   travels through undo/redo normally, and BG_SRC rides along in the job file as its own sidecar key. */
+let BG_SRC = null, bgImgEl = null, bgImgSrcLoaded = null, bgDrag = null, cropMode = false;
+function ensureBgImageLoaded(){
+  if(!BG_SRC){ bgImgEl=null; bgImgSrcLoaded=null; return; }
+  if(bgImgSrcLoaded === BG_SRC) return;
+  bgImgSrcLoaded = BG_SRC;
+  const im = new Image();
+  im.onload = () => { bgImgEl = im; draw(); };
+  im.src = BG_SRC;
+}
+function bgHandleAt(p){
+  if(!S.bg) return false;
+  return Math.hypot(p.x-(S.bg.x+S.bg.w), p.y-(S.bg.y+S.bg.h)) < 18/view.z;
+}
+function bgRectContains(p){
+  return !!S.bg && p.x>=S.bg.x && p.x<=S.bg.x+S.bg.w && p.y>=S.bg.y && p.y<=S.bg.y+S.bg.h;
+}
+function applyBgCrop(x1,y1,x2,y2){
+  const sx = (x1 - S.bg.x) / S.bg.w * S.bg.natW, sy = (y1 - S.bg.y) / S.bg.h * S.bg.natH;
+  const sw = (x2-x1) / S.bg.w * S.bg.natW,        sh = (y2-y1) / S.bg.h * S.bg.natH;
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(sw)); c.height = Math.max(1, Math.round(sh));
+  c.getContext('2d').drawImage(bgImgEl, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  BG_SRC = c.toDataURL('image/jpeg', 0.85); bgImgSrcLoaded = null;
+  S.bg = { natW:c.width, natH:c.height, x:x1, y:y1, w:x2-x1, h:y2-y1 };
+}
+function openBgSheet(){
+  openSheet(`<h2>Imported plan</h2>
+    <p style="font-size:13px;color:#555;line-height:1.5;">Drag the image to reposition it, or drag its
+    bottom-right corner (with the Import tool selected) to resize it. Use Crop to trim away parts you
+    don't need — title blocks, margin notes, anything outside the area you're marking up.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+      <button id="bg-crop" style="flex:1 1 45%;padding:12px;border-radius:9px;border:2px solid var(--blue);background:#fff;color:var(--blue);font-weight:bold;">Crop</button>
+      <button id="bg-replace" style="flex:1 1 45%;padding:12px;border-radius:9px;border:2px solid var(--blue);background:#fff;color:var(--blue);font-weight:bold;">Replace image</button>
+    </div>`,
+    null,
+    ()=>{ pushUndo(); S.bg=null; BG_SRC=null; bgImgSrcLoaded=null; draw(); });
+  document.getElementById('bg-crop').onclick = () => {
+    modal.style.display='none';
+    cropMode = true;
+    flash('Drag a box over the part of the plan you want to KEEP, then release.');
+  };
+  document.getElementById('bg-replace').onclick = () => {
+    modal.style.display='none';
+    document.getElementById('bgFile').click();
+  };
+}
+
+/* ===== selection + resize (Move tool): Circle / Fill / Stairs =====
+   These three object types used to support only whole-object dragging — no way to make one bigger or
+   smaller after it was placed (delete + redraw was the only option). Now, tapping one with the Move tool
+   SELECTS it: a dashed outline + corner/end handles appear (screen-only, same idea as the Import image's
+   own handle), and dragging a handle resizes it. A two-finger pinch while one is selected resizes it too,
+   instead of zooming the view (which is what two fingers do everywhere else). Tapping empty space,
+   switching tools, or any undo/redo/new-job/load clears the selection. */
+let selected = null;      // {kind:'circle'|'fill'|'stair'|'door', obj}
+let resizeDrag = null;    // {kind:'circle'|'fill'|'stair', obj, oppLocal, oppWorld} or {kind:'door', obj, fixed, horiz, end} or {kind, obj, rotDrag:true, center}
+let objPinch = null;      // {kind, obj, d0, snap0} — an active two-finger pinch resizing the selected object
+function selectableKind(k){ return k==='circle' || k==='fill' || k==='stair' || isSegKind(k); }
+function isSegKind(k){ return k==='door'; }   // segment-shaped (two endpoints) — only doors now; Stairs moved to the box model below
+function deselectIfGone(obj){ if(selected && selected.obj===obj) selected=null; }
+function segHoriz(seg){ return Math.abs(seg.x2-seg.x1) >= Math.abs(seg.y2-seg.y1); }
+function rotatableKind(k){ return k==='circle' || k==='fill' || k==='stair'; }   // doors excluded — their angle follows the host wall
+/* every box-kind object's centre, used as the pivot for rotation */
+function objCenter(kind, o){ return kind==='circle' ? {x:o.x,y:o.y} : {x:o.x+o.w/2, y:o.y+o.h/2}; }
+/* rotate point p by `rot` radians around centre c (world <-> local space conversion) */
+function rotateAround(p, c, rot){
+  if(!rot) return {x:p.x, y:p.y};
+  const dx=p.x-c.x, dy=p.y-c.y, cs=Math.cos(rot), sn=Math.sin(rot);
+  return { x: c.x + dx*cs - dy*sn, y: c.y + dx*sn + dy*cs };
+}
+/* convert a live world-space pointer into the object's local (unrotated) space during a resize drag,
+   pivoting off the FIXED opposite corner (captured once at drag-start) rather than the centre — the
+   centre shifts as the box resizes, but the opposite corner never moves, so it's a stable reference */
+function worldToLocalRel(p, pivotWorld, pivotLocal, rot){
+  if(!rot) return { x: pivotLocal.x + (p.x-pivotWorld.x), y: pivotLocal.y + (p.y-pivotWorld.y) };
+  const dx=p.x-pivotWorld.x, dy=p.y-pivotWorld.y, cs=Math.cos(-rot), sn=Math.sin(-rot);
+  return { x: pivotLocal.x + dx*cs - dy*sn, y: pivotLocal.y + dx*sn + dy*cs };
+}
+/* the 4 bounding-box corners for a circle/fill/stair, in the object's own LOCAL (unrotated) coords —
+   rotation is applied separately, on top, wherever these are used for rendering/hit-testing/handles */
+function boxCorners(kind, o){
+  if(kind==='circle') return { tl:{x:o.x-o.rx,y:o.y-o.ry}, tr:{x:o.x+o.rx,y:o.y-o.ry},
+                                bl:{x:o.x-o.rx,y:o.y+o.ry}, br:{x:o.x+o.rx,y:o.y+o.ry} };
+  const x=Math.min(o.x,o.x+o.w), y=Math.min(o.y,o.y+o.h), w=Math.abs(o.w), h=Math.abs(o.h);
+  return { tl:{x,y}, tr:{x:x+w,y}, bl:{x,y:y+h}, br:{x:x+w,y:y+h} };
+}
+/* every handle for the current selection, in world coords (rotated into place if the object has a rot) */
+function selHandles(sel){
+  if(!sel) return [];
+  if(isSegKind(sel.kind)){ const st=sel.obj; return [{id:'p1',x:st.x1,y:st.y1},{id:'p2',x:st.x2,y:st.y2}]; }
+  const o = sel.obj, rot = o.rot||0, c = objCenter(sel.kind, o);
+  const lc = boxCorners(sel.kind, o);
+  const pts = ['tl','tr','bl','br'].map(id => ({id, ...rotateAround(lc[id], c, rot)}));
+  if(rotatableKind(sel.kind)){
+    const stemLen = 34/(view.z||1);
+    const localTopMid = { x:(lc.tl.x+lc.tr.x)/2, y:lc.tl.y - stemLen };
+    pts.push({ id:'rot', ...rotateAround(localTopMid, c, rot) });
+  }
+  return pts;
+}
+function handleAt(sel, p, tol){
+  for(const h of selHandles(sel)) if(Math.hypot(p.x-h.x, p.y-h.y) < tol) return h.id;
+  return null;
+}
+const MIN_BOX = CELL*0.35, MIN_STAIR = CELL*0.6;
+/* resize a circle/fill/stair. opp/p must both already be in the object's LOCAL (unrotated) space —
+   callers are responsible for converting the live world pointer into that space (see pointer handling) */
+function applyBoxResize(kind, o, opp, p){
+  let x1=Math.min(opp.x,p.x), x2=Math.max(opp.x,p.x), y1=Math.min(opp.y,p.y), y2=Math.max(opp.y,p.y);
+  if(x2-x1<MIN_BOX){ if(p.x>=opp.x) x2=x1+MIN_BOX; else x1=x2-MIN_BOX; }
+  if(y2-y1<MIN_BOX){ if(p.y>=opp.y) y2=y1+MIN_BOX; else y1=y2-MIN_BOX; }
+  if(kind==='fill' || kind==='stair'){ o.x=x1; o.y=y1; o.w=x2-x1; o.h=y2-y1; }
+  else { o.x=(x1+x2)/2; o.y=(y1+y2)/2; o.rx=(x2-x1)/2; o.ry=(y2-y1)/2; }
+}
+/* resize a door by dragging one end — orientation-locked (doors are always straight, never at an angle) */
+function applySegResize(seg, fixed, horiz, end, p){
+  if(horiz){
+    let x=p.x; if(Math.abs(x-fixed.x) < MIN_STAIR) x = fixed.x + (x>=fixed.x ? MIN_STAIR : -MIN_STAIR);
+    if(end==='p1'){ seg.x1=x; seg.y1=fixed.y; seg.x2=fixed.x; seg.y2=fixed.y; }
+    else { seg.x2=x; seg.y2=fixed.y; seg.x1=fixed.x; seg.y1=fixed.y; }
+  } else {
+    let y=p.y; if(Math.abs(y-fixed.y) < MIN_STAIR) y = fixed.y + (y>=fixed.y ? MIN_STAIR : -MIN_STAIR);
+    if(end==='p1'){ seg.y1=y; seg.x1=fixed.x; seg.x2=fixed.x; seg.y2=fixed.y; }
+    else { seg.y2=y; seg.x2=fixed.x; seg.x1=fixed.x; seg.y1=fixed.y; }
+  }
+}
+/* rotate handle: angle from the object's centre to the pointer, with straight-up defined as rot=0,
+   gently snapped to 15° notches so lining things up square (or at a clean 45°) is easy */
+function applyRotate(obj, center, p){
+  let ang = Math.atan2(p.y-center.y, p.x-center.x) + Math.PI/2;
+  const deg = ang*180/Math.PI, snapped = Math.round(deg/15)*15;
+  if(Math.abs(deg-snapped) < 4) ang = snapped*Math.PI/180;
+  obj.rot = ang;
+}
+/* two-finger pinch resize: scale the object about its own center / midpoint (rotation, if any, is preserved) */
+function objPinchSnapshot(kind, o){
+  if(isSegKind(kind)) return { x1:o.x1,y1:o.y1,x2:o.x2,y2:o.y2 };
+  if(kind==='fill' || kind==='stair') return { x:o.x,y:o.y,w:o.w,h:o.h };
+  return { x:o.x,y:o.y,rx:o.rx,ry:o.ry };
+}
+function applyObjPinch(kind, o, s0, ratio){
+  if(isSegKind(kind)){
+    const mx=(s0.x1+s0.x2)/2, my=(s0.y1+s0.y2)/2;
+    o.x1 = mx + (s0.x1-mx)*ratio; o.y1 = my + (s0.y1-my)*ratio;
+    o.x2 = mx + (s0.x2-mx)*ratio; o.y2 = my + (s0.y2-my)*ratio;
+  } else if(kind==='fill' || kind==='stair'){
+    const cx=s0.x+s0.w/2, cy=s0.y+s0.h/2;
+    o.w = Math.max(MIN_BOX, s0.w*ratio); o.h = Math.max(MIN_BOX, s0.h*ratio);
+    o.x = cx - o.w/2; o.y = cy - o.h/2;
+  } else {
+    o.rx = Math.max(MIN_BOX/2, s0.rx*ratio); o.ry = Math.max(MIN_BOX/2, s0.ry*ratio);
+  }
+}
 function draw(){
   const w = cv.width, h = cv.height;
   ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle = '#fdfdfb'; ctx.fillRect(0,0,w,h);
@@ -433,6 +641,69 @@ function draw(){
   for(let y=y0; y<=ye; y+=CELL){ ctx.moveTo(x0, y); ctx.lineTo(xe, y); }
   ctx.stroke();
   paintContent(ctx, 1, false);
+  if(tool==='import' && S.bg && !cropMode){   // screen-only handles — never exported
+    ctx.save();
+    ctx.strokeStyle='#1C4E9E'; ctx.setLineDash([4,4]); ctx.lineWidth=2/view.z;
+    ctx.strokeRect(S.bg.x, S.bg.y, S.bg.w, S.bg.h);
+    ctx.setLineDash([]);
+    ctx.fillStyle='#1C4E9E';
+    ctx.beginPath(); ctx.arc(S.bg.x+S.bg.w, S.bg.y+S.bg.h, 9/view.z, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  if(tool==='move' && selected && selectableKind(selected.kind)){   // screen-only selection outline + handles
+    ctx.save();
+    ctx.strokeStyle = '#1C4E9E'; ctx.setLineDash([4,4]); ctx.lineWidth = 2/view.z;
+    if(isSegKind(selected.kind)){
+      const st = selected.obj;
+      ctx.beginPath(); ctx.moveTo(st.x1,st.y1); ctx.lineTo(st.x2,st.y2); ctx.stroke();
+    } else {
+      const o = selected.obj, rot = o.rot||0, c = objCenter(selected.kind, o);
+      const lc = boxCorners(selected.kind, o);
+      ctx.save();
+      if(rot){ ctx.translate(c.x,c.y); ctx.rotate(rot); ctx.translate(-c.x,-c.y); }
+      ctx.strokeRect(lc.tl.x, lc.tl.y, lc.br.x-lc.tl.x, lc.br.y-lc.tl.y);
+      ctx.restore();
+      if(rotatableKind(selected.kind)){
+        // thin stem from the top edge up to the green rotate handle
+        const rotH = selHandles(selected).find(h=>h.id==='rot');
+        const topMidWorld = rotateAround({x:(lc.tl.x+lc.tr.x)/2, y:lc.tl.y}, c, rot);
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(topMidWorld.x, topMidWorld.y); ctx.lineTo(rotH.x, rotH.y); ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+    for(const h of selHandles(selected)){
+      ctx.beginPath(); ctx.arc(h.x, h.y, 8/view.z, 0, Math.PI*2);
+      ctx.fillStyle = h.id==='rot' ? '#2e7d32' : '#1C4E9E'; ctx.fill();
+      ctx.strokeStyle='#fff'; ctx.lineWidth=1.5/view.z; ctx.stroke();
+    }
+    ctx.restore();
+  }
+  if(tool==='move' && moveTarget && (moveTarget.kind==='wall' || moveTarget.kind==='corner')){
+    // walls already resize by direct drag (no separate select step) — this just makes it visibly
+    // obvious WHICH wall(s) you're currently adjusting, the moment you press down on one
+    ctx.save();
+    ctx.strokeStyle='#1C4E9E'; ctx.lineWidth=8/view.z; ctx.lineCap='round'; ctx.globalAlpha=0.35;
+    ctx.beginPath();
+    if(moveTarget.kind==='wall'){
+      const w=moveTarget.obj; ctx.moveTo(w.x1,w.y1); ctx.lineTo(w.x2,w.y2);
+    } else {
+      ctx.moveTo(moveTarget.wH.x1,moveTarget.wH.y1); ctx.lineTo(moveTarget.wH.x2,moveTarget.wH.y2);
+      ctx.moveTo(moveTarget.wV.x1,moveTarget.wV.y1); ctx.lineTo(moveTarget.wV.x2,moveTarget.wV.y2);
+    }
+    ctx.stroke();
+    ctx.globalAlpha=1; ctx.fillStyle='#1C4E9E';
+    const dots = moveTarget.kind==='wall' ? [{x:moveTarget.obj.x1,y:moveTarget.obj.y1},{x:moveTarget.obj.x2,y:moveTarget.obj.y2}]
+      : [{x:moveTarget.cx,y:moveTarget.cy}];
+    for(const d of dots){ ctx.beginPath(); ctx.arc(d.x,d.y,6/view.z,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+  if(tempRect && cropMode){
+    ctx.save(); ctx.strokeStyle='#1C4E9E'; ctx.setLineDash([6,4]); ctx.lineWidth=3/view.z;
+    ctx.strokeRect(Math.min(tempRect.x1,tempRect.x2), Math.min(tempRect.y1,tempRect.y2),
+                   Math.abs(tempRect.x2-tempRect.x1), Math.abs(tempRect.y2-tempRect.y1));
+    ctx.restore();
+  }
   if(tempSeg){ ctx.strokeStyle = '#1C4E9E'; ctx.lineWidth = 5; ctx.beginPath();
     if(tool==='hall'){
       const horiz = Math.abs(tempSeg.x2-tempSeg.x1) >= Math.abs(tempSeg.y2-tempSeg.y1);
@@ -442,7 +713,17 @@ function draw(){
                  ctx.moveTo(tempSeg.x1+CELL,tempSeg.y1); ctx.lineTo(tempSeg.x2+CELL,tempSeg.y2); }
     } else { ctx.moveTo(tempSeg.x1, tempSeg.y1); ctx.lineTo(tempSeg.x2, tempSeg.y2); }
     ctx.stroke(); }
-  if(tempRect){ ctx.strokeStyle = '#1C4E9E'; ctx.lineWidth = 5;
+  if(tempRect && tool==='circle'){ ctx.strokeStyle = '#1C4E9E'; ctx.lineWidth = 5;
+    const cx=(tempRect.x1+tempRect.x2)/2, cy=(tempRect.y1+tempRect.y2)/2;
+    const rx=Math.abs(tempRect.x2-tempRect.x1)/2, ry=Math.abs(tempRect.y2-tempRect.y1)/2;
+    ctx.beginPath(); ctx.ellipse(cx,cy,Math.max(rx,2),Math.max(ry,2),0,0,Math.PI*2); ctx.stroke();
+  } else if(tempRect && tool==='fill'){ ctx.save();
+    const fx=Math.min(tempRect.x1,tempRect.x2), fy=Math.min(tempRect.y1,tempRect.y2);
+    const fw=Math.abs(tempRect.x2-tempRect.x1), fh=Math.abs(tempRect.y2-tempRect.y1);
+    if(fillPref.mode==='clear'){ ctx.fillStyle='rgba(255,255,255,0.65)'; ctx.fillRect(fx,fy,fw,fh); ctx.strokeStyle='#1C4E9E'; }
+    else { ctx.globalAlpha=0.30; ctx.fillStyle=fillPref.color; ctx.fillRect(fx,fy,fw,fh); ctx.globalAlpha=1; ctx.strokeStyle=fillPref.color; }
+    ctx.lineWidth=2.5; ctx.setLineDash([6,4]); ctx.strokeRect(fx,fy,fw,fh); ctx.restore();
+  } else if(tempRect && !cropMode){ ctx.strokeStyle = '#1C4E9E'; ctx.lineWidth = 5;
     ctx.strokeRect(Math.min(tempRect.x1,tempRect.x2), Math.min(tempRect.y1,tempRect.y2),
                    Math.abs(tempRect.x2-tempRect.x1), Math.abs(tempRect.y2-tempRect.y1)); }
 }
@@ -507,8 +788,140 @@ function smartLabelPos(r, c, sc){
   return best;
 }
 
+/* ===== fixture symbols: simple vector icons, drawn to scale — no image assets, stays crisp at any zoom =====
+   Each draw(c,x,y,sc) renders centered at (x,y) in world space; sc is the same export/screen lineweight
+   scale used everywhere else in paintContent. Roughly a 26x26 world-unit footprint (about one grid cell). */
+function rr(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+const FIXTURE_DEFS = {
+  toilet:    { label:'🚽 Toilet',              draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    rr(c,-9,-13,18,7,1.5); c.fill(); c.stroke();
+    c.beginPath(); c.ellipse(0,3,9,9.5,0,0,Math.PI*2); c.fill(); c.stroke(); c.restore(); } },
+  sink:      { label:'🚰 Sink / Vanity',        draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    rr(c,-13,-9,26,18,2); c.fill(); c.stroke();
+    c.beginPath(); c.ellipse(0,1,8,6,0,0,Math.PI*2); c.stroke();
+    c.beginPath(); c.arc(0,-6,1.6,0,Math.PI*2); c.fill(); c.restore(); } },
+  bathtub:   { label:'🛁 Bathtub',              draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.8; c.strokeStyle='#000'; c.fillStyle='#fff';
+    rr(c,-16,-9,32,18,6); c.fill(); c.stroke(); rr(c,-13,-6,26,12,4); c.stroke(); c.restore(); } },
+  shower:    { label:'🚿 Shower Stall',         draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.strokeRect(-12,-12,24,24);
+    c.beginPath(); c.arc(0,0,3.5,0,Math.PI*2); c.stroke();
+    c.beginPath(); c.moveTo(-12,-12); c.lineTo(12,12); c.stroke(); c.restore(); } },
+  ksink:     { label:'🍽 Kitchen Sink',         draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    rr(c,-14,-9,28,18,2); c.fill(); c.stroke();
+    c.strokeRect(-11,-5,10,10); c.strokeRect(1,-5,10,10); c.restore(); } },
+  stove:     { label:'🔥 Stove / Range',        draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.strokeRect(-12,-12,24,24);
+    for(const [dx,dy] of [[-6,-6],[6,-6],[-6,6],[6,6]]){ c.beginPath(); c.arc(dx,dy,3.4,0,Math.PI*2); c.stroke(); }
+    c.restore(); } },
+  fridge:    { label:'🧊 Refrigerator',         draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    rr(c,-10,-14,20,28,2); c.fill(); c.stroke();
+    c.beginPath(); c.moveTo(-10,-2); c.lineTo(10,-2); c.stroke();
+    c.beginPath(); c.moveTo(-7,-11); c.lineTo(-7,-4); c.stroke(); c.restore(); } },
+  dishwasher:{ label:'🍴 Dishwasher',           draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.strokeRect(-11,-11,22,22);
+    c.beginPath(); c.moveTo(-11,-5); c.lineTo(11,-5); c.stroke(); c.restore(); } },
+  hwt:       { label:'🛢 Hot Water Tank',       draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.beginPath(); c.arc(0,0,11,0,Math.PI*2); c.fill(); c.stroke();
+    c.beginPath(); c.arc(0,0,7,0,Math.PI*2); c.stroke(); c.restore(); } },
+  furnace:   { label:'♨ Furnace / Heater',      draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.strokeRect(-11,-13,22,26);
+    for(const dy of [-6,0,6]){ c.beginPath(); c.moveTo(-7,dy); c.lineTo(7,dy); c.stroke(); } c.restore(); } },
+  hvac:      { label:'❄ HVAC / AC Unit',        draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    rr(c,-13,-9,26,18,3); c.fill(); c.stroke();
+    c.beginPath(); c.arc(0,0,6,0,Math.PI*2); c.stroke();
+    c.beginPath(); c.moveTo(-6,-6); c.lineTo(6,6); c.moveTo(6,-6); c.lineTo(-6,6); c.stroke(); c.restore(); } },
+  panel:     { label:'⚡ Electrical Panel',      draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.strokeRect(-9,-13,18,26);
+    for(let i=0;i<4;i++){ c.beginPath(); c.moveTo(-6,-9+i*6); c.lineTo(6,-9+i*6); c.stroke(); } c.restore(); } },
+  sump:      { label:'💧 Sump Pump',            draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.beginPath(); c.arc(0,0,10,0,Math.PI*2); c.fill(); c.stroke();   // the pit
+    c.beginPath(); c.arc(0,0,4,0,Math.PI*2); c.fill();                // the pump (solid, distinct from HWT's open rings)
+    c.beginPath(); c.moveTo(7,-7); c.lineTo(14,-14); c.stroke();          // discharge pipe stub, up and out
+    c.beginPath(); c.moveTo(11,-14); c.lineTo(14,-14); c.lineTo(14,-11); c.stroke(); c.restore(); } },
+  wmeter:    { label:'🔧 Water Meter / Shutoff',draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.beginPath(); c.arc(0,0,10,0,Math.PI*2); c.fill(); c.stroke();
+    c.beginPath(); c.moveTo(0,0); c.lineTo(6,-6); c.stroke(); c.restore(); } },
+  washer:    { label:'🌀 Washer',               draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.strokeRect(-12,-12,24,24);
+    c.beginPath(); c.arc(0,1,7.5,0,Math.PI*2); c.stroke();
+    c.beginPath(); c.arc(-8,-8,1.4,0,Math.PI*2); c.fill(); c.restore(); } },
+  dryer:     { label:'🌬 Dryer',                draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.strokeRect(-12,-12,24,24);
+    c.beginPath(); c.arc(0,1,6,0,Math.PI*2); c.stroke();               // smaller solid-circle door (vs washer's bigger one)
+    for(const dy of [-15,-11]){ c.beginPath(); c.moveTo(-3,dy); c.lineTo(3,dy); c.stroke(); }  // vent lines off the top
+    c.restore(); } },
+  couch:     { label:'🛋 Sofa / Couch',         draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    rr(c,-16,-8,32,14,3); c.fill(); c.stroke();
+    rr(c,-16,-12,6,18,2); c.fill(); c.stroke(); rr(c,10,-12,6,18,2); c.fill(); c.stroke(); c.restore(); } },
+  bed:       { label:'🛏 Bed',                  draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    rr(c,-14,-16,28,32,2); c.fill(); c.stroke();
+    rr(c,-11,-13,22,8,2); c.stroke(); c.restore(); } },
+  table:     { label:'⬜ Table',                draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.strokeRect(-13,-9,26,18);
+    for(const [dx,dy] of [[-13,-9],[11,-9],[-13,7],[11,7]]){ c.beginPath(); c.arc(dx+2,dy+2,1.6,0,Math.PI*2); c.fill(); }
+    c.restore(); } },
+  counter:   { label:'▭ Counter / Island',      draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    rr(c,-18,-7,36,14,2); c.fill(); c.stroke(); c.restore(); } },
+  fireplace: { label:'🔥 Fireplace',             draw(c,x,y,sc){ c.save(); c.translate(x,y); c.scale(sc,sc);
+    c.lineWidth=1.6; c.strokeStyle='#000'; c.fillStyle='#fff';
+    c.strokeRect(-13,-13,26,26);
+    c.beginPath(); c.arc(0,3,7,Math.PI,0); c.stroke(); c.restore(); } }
+};
+const FIXTURE_ORDER = ['toilet','sink','bathtub','shower','ksink','stove','fridge','dishwasher',
+  'hwt','furnace','hvac','panel','sump','wmeter','washer','dryer','couch','bed','table','counter','fireplace'];
+
 /* paint job content onto any ctx (screen or export); sc = extra scale for lineweights */
 function paintContent(c, sc, forExport){
+  // imported background plan (photo/scan of an existing drawing) — the absolute bottom layer, so
+  // everything drawn or filled on top of it (including the export) stays visible above it
+  if(S.bg){
+    ensureBgImageLoaded();
+    if(bgImgEl) c.drawImage(bgImgEl, S.bg.x, S.bg.y, S.bg.w, S.bg.h);
+  }
+  // fill / clear areas — bottom layer so contamination washes sit under the drawing and labels stay readable,
+  // and a white "clear" block covers a congested imported plan without hiding the markup drawn on top of it
+  for(const fa of (S.fills||[])){
+    const x=Math.min(fa.x,fa.x+fa.w), y=Math.min(fa.y,fa.y+fa.h), w=Math.abs(fa.w), h=Math.abs(fa.h);
+    c.save();
+    if(fa.rot){ const cx=fa.x+fa.w/2, cy=fa.y+fa.h/2; c.translate(cx,cy); c.rotate(fa.rot); c.translate(-cx,-cy); }
+    if(fa.mode==='clear'){
+      c.fillStyle = forExport ? '#ffffff' : '#fdfdfb';   // matches the paper background = a clean white-out
+      c.fillRect(x,y,w,h);
+      if(!forExport){ c.strokeStyle='#c9b8d6'; c.setLineDash([5,4]); c.lineWidth=1;
+        c.strokeRect(x+0.5,y+0.5,Math.max(w-1,0),Math.max(h-1,0)); }   // faint dashed edge on screen so you can see it (never exported)
+    } else if(fa.mode==='hatch'){
+      c.beginPath(); c.rect(x,y,w,h); c.clip();
+      c.strokeStyle=fa.color; c.lineWidth=1.6*sc; c.globalAlpha=0.9;
+      const step=9*sc;
+      for(let d=-h; d<w; d+=step){ c.beginPath(); c.moveTo(x+d, y+h); c.lineTo(x+d+h, y); c.stroke(); }
+      c.globalAlpha=1;
+    } else {   // solid colour wash
+      c.globalAlpha=0.30; c.fillStyle=fa.color; c.fillRect(x,y,w,h); c.globalAlpha=1;
+      c.strokeStyle=fa.color; c.lineWidth=1.6*sc; c.strokeRect(x,y,w,h);
+    }
+    c.restore();
+  }
   // walls
   c.strokeStyle = '#000'; c.lineCap = 'square';
   c.lineWidth = 6*sc;
@@ -520,24 +933,31 @@ function paintContent(c, sc, forExport){
   c.beginPath();
   for(const d of S.doors){ c.moveTo(d.x1,d.y1); c.lineTo(d.x2,d.y2); }
   c.stroke();
-  // stairs: rails + rungs along the run
+  // stairs: rails + rungs within the box — a resizable/rotatable rectangle, same as Fill
   c.strokeStyle = '#000'; c.lineWidth = 2*sc;
   for(const st of (S.stairs||[])){
-    const horiz = Math.abs(st.x2-st.x1) >= Math.abs(st.y2-st.y1);
-    const o = CELL/2;
+    c.save();
+    if(st.rot){ const cx=st.x+st.w/2, cy=st.y+st.h/2; c.translate(cx,cy); c.rotate(st.rot); c.translate(-cx,-cy); }
+    const horiz = st.w >= st.h;
     c.beginPath();
     if(horiz){
-      c.moveTo(st.x1, st.y1-o); c.lineTo(st.x2, st.y1-o);
-      c.moveTo(st.x1, st.y1+o); c.lineTo(st.x2, st.y1+o);
-      const n = Math.max(2, Math.floor(Math.abs(st.x2-st.x1)/(CELL/2)));
-      for(let i=0;i<=n;i++){ const x=st.x1+(st.x2-st.x1)*i/n; c.moveTo(x, st.y1-o); c.lineTo(x, st.y1+o); }
+      c.moveTo(st.x, st.y); c.lineTo(st.x+st.w, st.y);
+      c.moveTo(st.x, st.y+st.h); c.lineTo(st.x+st.w, st.y+st.h);
+      const n = Math.max(2, Math.floor(st.w/(CELL/2)));
+      for(let i=0;i<=n;i++){ const x=st.x+st.w*i/n; c.moveTo(x, st.y); c.lineTo(x, st.y+st.h); }
     } else {
-      c.moveTo(st.x1-o, st.y1); c.lineTo(st.x1-o, st.y2);
-      c.moveTo(st.x1+o, st.y1); c.lineTo(st.x1+o, st.y2);
-      const n = Math.max(2, Math.floor(Math.abs(st.y2-st.y1)/(CELL/2)));
-      for(let i=0;i<=n;i++){ const y=st.y1+(st.y2-st.y1)*i/n; c.moveTo(st.x1-o, y); c.lineTo(st.x1+o, y); }
+      c.moveTo(st.x, st.y); c.lineTo(st.x, st.y+st.h);
+      c.moveTo(st.x+st.w, st.y); c.lineTo(st.x+st.w, st.y+st.h);
+      const n = Math.max(2, Math.floor(st.h/(CELL/2)));
+      for(let i=0;i<=n;i++){ const y=st.y+st.h*i/n; c.moveTo(st.x, y); c.lineTo(st.x+st.w, y); }
     }
     c.stroke();
+    c.restore();
+  }
+  // circles — freeform round objects (hot water tanks, columns, floor drains, whatever's actually round)
+  c.strokeStyle = '#000'; c.lineWidth = 3*sc; c.fillStyle = 'rgba(0,0,0,0)';
+  for(const cr of (S.circles||[])){
+    c.beginPath(); c.ellipse(cr.x, cr.y, Math.max(cr.rx,4), Math.max(cr.ry,4), cr.rot||0, 0, Math.PI*2); c.stroke();
   }
   // rooms — samples stay where taken; the label block finds the clearest open spot in the room
   for(const r of S.rooms){
@@ -624,25 +1044,74 @@ wrap.addEventListener('pointerdown', e => {
   pointers.set(e.pointerId, {x:e.offsetX, y:e.offsetY});
   if(pointers.size === 2){
     const [a,b] = [...pointers.values()];
-    pinch = { d: Math.hypot(a.x-b.x, a.y-b.y), cx:(a.x+b.x)/2, cy:(a.y+b.y)/2, view:{...view} };
-    tempSeg = null; dragStart = null;
+    const d = Math.hypot(a.x-b.x, a.y-b.y), cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
+    if(tool==='move' && selected && selectableKind(selected.kind)){
+      // two fingers on a selected circle/fill/stair resize IT, instead of zooming the view like everywhere else
+      pushUndo();
+      objPinch = { kind:selected.kind, obj:selected.obj, d0:d, snap0: objPinchSnapshot(selected.kind, selected.obj) };
+      pinch = null;
+    } else {
+      pinch = { d, cx, cy, view:{...view} };
+      objPinch = null;
+    }
+    tempSeg = null; dragStart = null; moveTarget = null; resizeDrag = null;
   } else if(pointers.size === 1){
     downScr = {x:e.offsetX, y:e.offsetY}; movedFar = false;
     const wpt = toWorld(e.offsetX, e.offsetY);
-    if(tool==='wallh' || tool==='wallv' || tool==='door' || tool==='box' || tool==='hall' || tool==='stairs'){ dragStart = { x: snap(wpt.x), y: snap(wpt.y) }; }
+    if(cropMode){ dragStart = { x: snap(wpt.x), y: snap(wpt.y) }; }
+    else if(tool==='wallh' || tool==='wallv' || tool==='walld' || tool==='door' || tool==='box' || tool==='hall' || tool==='stairs' || tool==='circle' || tool==='fill'){ dragStart = { x: snap(wpt.x), y: snap(wpt.y) }; }
+    else if(tool==='import'){
+      if(S.bg){
+        if(bgHandleAt(wpt)){ pushUndo(); bgDrag = {kind:'resize'}; dragStart = wpt; }
+        else if(bgRectContains(wpt)){ pushUndo(); bgDrag = {kind:'move'}; dragStart = wpt; }
+      } else {
+        document.getElementById('bgFile').click();
+      }
+    }
     else if(tool==='move'){
-      dragStart = wpt; moveTarget = null;
-      // 1. stamps first (samples / room labels / text)
+      dragStart = wpt; moveTarget = null; resizeDrag = null;
+      // 0. a selected circle/fill/stair/door's own handle takes priority over everything else — grab it to resize (or rotate)
+      if(selected && selectableKind(selected.kind)){
+        const hid = handleAt(selected, wpt, 18/view.z);
+        if(hid){
+          pushUndo();
+          if(isSegKind(selected.kind)){
+            const st = selected.obj, horiz = segHoriz(st);
+            const fixed = hid==='p1' ? {x:st.x2,y:st.y2} : {x:st.x1,y:st.y1};
+            resizeDrag = { kind:selected.kind, obj:st, fixed, horiz, end:hid };
+          } else if(hid==='rot'){
+            resizeDrag = { kind:selected.kind, obj:selected.obj, rotDrag:true, center: objCenter(selected.kind, selected.obj) };
+          } else {
+            // capture the FIXED opposite corner in both local (unrotated) and world space, at drag start —
+            // resizing then always happens in local space (see pointermove) so it stays correct even if the object is rotated
+            const o = selected.obj, rot = o.rot||0, c = objCenter(selected.kind, o);
+            const oppId = {tl:'br',tr:'bl',bl:'tr',br:'tl'}[hid];
+            const oppLocal = boxCorners(selected.kind, o)[oppId];
+            resizeDrag = { kind:selected.kind, obj:o, oppLocal, oppWorld: rotateAround(oppLocal, c, rot), rot };
+          }
+          cv.style.cursor = 'grabbing';
+          return;
+        }
+      }
+      // 1. stamps first (samples / room labels / text / circles)
       for(const [kind,tol] of [['sample',22],['room',24],['text',22]]){
         const o = nearestOfKind(wpt, kind, tol/view.z);
         if(o){ moveTarget = {kind, obj:o}; break; }
+      }
+      if(!moveTarget){
+        const cc = circleAt(wpt);
+        if(cc){ moveTarget = {kind:'circle', obj:cc}; }
+      }
+      if(!moveTarget){
+        const sa = stairAt(wpt);
+        if(sa){ moveTarget = {kind:'stair', obj:sa}; }
       }
       // 2. corners: drag resizes both directions
       if(!moveTarget){
         const cr = cornerAt(wpt, 16/view.z);
         if(cr) moveTarget = {kind:'corner', ...cr, attH:computeAttach(cr.wH), attV:computeAttach(cr.wV)};
       }
-      // 3. edges: perpendicular resize; doors/stairs translate
+      // 3. edges: perpendicular resize; doors translate
       if(!moveTarget){
         const st = nearest(wpt, 14/view.z);
         if(st && st.kind==='wall'){ moveTarget = st; moveTarget.att = computeAttach(st.obj); }
@@ -650,7 +1119,13 @@ wrap.addEventListener('pointerdown', e => {
       }
       // 4. inside a room: drag the whole room
       if(!moveTarget) moveTarget = roomMoveTarget(wpt);
-      if(moveTarget) pushUndo();
+      // 5. fill/clear area: lowest priority, so a fill covering a room never steals a room-resize drag
+      if(!moveTarget){ const fa=fillAt(wpt); if(fa) moveTarget={kind:'fill', obj:fa}; }
+      // selecting: a circle/fill/stair/door under the press becomes the selection (shows handles); anything
+      // else — a wall, a room, empty space — clears whatever was selected before
+      selected = (moveTarget && selectableKind(moveTarget.kind)) ? {kind:moveTarget.kind, obj:moveTarget.obj} : null;
+      draw();   // show/hide the selection outline+handles immediately — a plain tap (no drag) never fires draw() otherwise
+      if(moveTarget){ pushUndo(); cv.style.cursor = 'grabbing'; }
     }
   }
 });
@@ -658,6 +1133,13 @@ wrap.addEventListener('pointermove', e => {
   if(!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, {x:e.offsetX, y:e.offsetY});
   if(downScr && Math.hypot(e.offsetX-downScr.x, e.offsetY-downScr.y) > 9) movedFar = true;
+  if(objPinch && pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    const d = Math.hypot(a.x-b.x, a.y-b.y);
+    const ratio = Math.max(0.25, Math.min(5, d/objPinch.d0));
+    applyObjPinch(objPinch.kind, objPinch.obj, objPinch.snap0, ratio);
+    draw(); return;
+  }
   if(pinch && pointers.size === 2){
     const [a,b] = [...pointers.values()];
     const d = Math.hypot(a.x-b.x, a.y-b.y), cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
@@ -668,14 +1150,30 @@ wrap.addEventListener('pointermove', e => {
     draw(); return;
   }
   const wpt = toWorld(e.offsetX, e.offsetY);
-  if(dragStart && (tool==='wallh'||tool==='wallv'||tool==='door'||tool==='hall'||tool==='stairs')){
+  if(dragStart && cropMode){
+    tempRect = { x1:dragStart.x, y1:dragStart.y, x2:snap(wpt.x), y2:snap(wpt.y) };
+    draw();
+  } else if(tool==='import' && bgDrag && dragStart){
+    const dx = wpt.x - dragStart.x, dy = wpt.y - dragStart.y; dragStart = wpt;
+    if(bgDrag.kind==='move'){ S.bg.x += dx; S.bg.y += dy; }
+    else if(bgDrag.kind==='resize'){
+      const ratio = S.bg.natH / S.bg.natW;
+      S.bg.w = Math.max(CELL, S.bg.w + dx);
+      S.bg.h = S.bg.w * ratio;
+    }
+    draw();
+  } else if(dragStart && tool==='walld'){
+    // Wall Diag: free angle, no ortho lock at all — endpoints just snap to the grid
+    tempSeg = { x1:dragStart.x, y1:dragStart.y, x2:snap(wpt.x), y2:snap(wpt.y) };
+    draw();
+  } else if(dragStart && (tool==='wallh'||tool==='wallv'||tool==='door'||tool==='hall')){
     let x2 = snap(wpt.x), y2 = snap(wpt.y);
     if(tool==='wallh') y2 = dragStart.y;               // Wall H: always horizontal, orientation locked
     else if(tool==='wallv') x2 = dragStart.x;          // Wall V: always vertical, orientation locked
-    else if(Math.abs(x2-dragStart.x) > Math.abs(y2-dragStart.y)) y2 = dragStart.y; else x2 = dragStart.x; // door/hall/stairs: auto-ortho
+    else if(Math.abs(x2-dragStart.x) > Math.abs(y2-dragStart.y)) y2 = dragStart.y; else x2 = dragStart.x; // door/hall: auto-ortho
     tempSeg = { x1:dragStart.x, y1:dragStart.y, x2, y2 };
     draw();
-  } else if(dragStart && tool==='box'){
+  } else if(dragStart && (tool==='box'||tool==='circle'||tool==='fill'||tool==='stairs')){
     tempRect = { x1:dragStart.x, y1:dragStart.y, x2:snap(wpt.x), y2:snap(wpt.y) };
     draw();
   } else if(tool==='move' && moveTarget && dragStart){
@@ -688,14 +1186,32 @@ wrap.addEventListener('pointermove', e => {
     } else if(moveTarget.kind==='roomMove'){
       for(const w of moveTarget.walls){ w.x1+=dx; w.y1+=dy; w.x2+=dx; w.y2+=dy; }
       for(const d of moveTarget.doors){ d.x1+=dx; d.y1+=dy; d.x2+=dx; d.y2+=dy; }
-      for(const s of moveTarget.segs){ s.x1+=dx; s.y1+=dy; s.x2+=dx; s.y2+=dy; }
-      for(const o of moveTarget.items){ o.x+=dx; o.y+=dy; }
+      for(const o of moveTarget.items){ o.x+=dx; o.y+=dy; }   // circles/stairs (box, top-left) + samples/rooms/text (point) all translate the same way
     } else shift(moveTarget, dx, dy);
+    draw();
+  } else if(tool==='move' && resizeDrag){
+    if(resizeDrag.rotDrag){
+      applyRotate(resizeDrag.obj, resizeDrag.center, wpt);
+    } else if(isSegKind(resizeDrag.kind)){
+      const sp = { x: snap(wpt.x), y: snap(wpt.y) };   // snap like every other drawing tool
+      applySegResize(resizeDrag.obj, resizeDrag.fixed, resizeDrag.horiz, resizeDrag.end, sp);
+    } else {
+      // grid-snapping only makes sense in world-aligned space — skip it once the object is rotated
+      const p = resizeDrag.rot ? wpt : { x: snap(wpt.x), y: snap(wpt.y) };
+      const pLocal = worldToLocalRel(p, resizeDrag.oppWorld, resizeDrag.oppLocal, resizeDrag.rot);
+      applyBoxResize(resizeDrag.kind, resizeDrag.obj, resizeDrag.oppLocal, pLocal);
+    }
     draw();
   } else if(tool==='move' && !pointers.size){
     // hover: change the cursor like standard drawing apps
     let cur='default';
-    if(nearestOfKind(wpt,'sample',22/view.z)||nearestOfKind(wpt,'room',24/view.z)||nearestOfKind(wpt,'text',22/view.z)) cur='grab';
+    const selHid = (selected && selectableKind(selected.kind)) ? handleAt(selected, wpt, 18/view.z) : null;
+    if(selHid){
+      if(isSegKind(selected.kind)) cur = segHoriz(selected.obj) ? 'ew-resize' : 'ns-resize';
+      else if(selHid==='rot') cur = 'grab';
+      else cur = (selHid==='tl'||selHid==='br') ? 'nwse-resize' : 'nesw-resize';
+    }
+    else if(nearestOfKind(wpt,'sample',22/view.z)||nearestOfKind(wpt,'room',24/view.z)||nearestOfKind(wpt,'text',22/view.z)) cur='grab';
     else { const cr=cornerAt(wpt,16/view.z);
       if(cr){ const leftEnd = cr.cx===Math.min(cr.wH.x1,cr.wH.x2), topEnd = cr.cy===Math.min(cr.wV.y1,cr.wV.y2);
         cur = (leftEnd===topEnd) ? 'nwse-resize' : 'nesw-resize'; }
@@ -709,19 +1225,68 @@ wrap.addEventListener('pointermove', e => {
 });
 wrap.addEventListener('pointerup', e => {
   pointers.delete(e.pointerId);
-  if(pointers.size < 2) pinch = null;
+  if(pointers.size < 2){ pinch = null; objPinch = null; }
   const wpt = toWorld(e.offsetX, e.offsetY);
+  if(tool==='move' && resizeDrag){ resizeDrag = null; dragStart = null; draw(); return; }
+  if(tempRect && cropMode){
+    const x1=Math.max(S.bg.x, Math.min(tempRect.x1,tempRect.x2)), x2=Math.min(S.bg.x+S.bg.w, Math.max(tempRect.x1,tempRect.x2));
+    const y1=Math.max(S.bg.y, Math.min(tempRect.y1,tempRect.y2)), y2=Math.min(S.bg.y+S.bg.h, Math.max(tempRect.y1,tempRect.y2));
+    tempRect=null; dragStart=null; cropMode=false;
+    if(x2-x1>=CELL && y2-y1>=CELL){ pushUndo(); applyBgCrop(x1,y1,x2,y2); flash('Cropped — the rest of the image is gone (Undo restores it)'); }
+    else flash('Crop area too small — tap the image, then Crop, to try again');
+    draw(); return;
+  }
+  if(tool==='import' && bgDrag){
+    const wasDrag = movedFar;
+    bgDrag = null; dragStart = null;
+    if(wasDrag){ draw(); return; }
+    // else: a plain tap, not a drag — fall through to the tap-handling chain below, which opens the management sheet
+  }
   if(tempRect && tool==='box'){
     const x1=Math.min(tempRect.x1,tempRect.x2), x2=Math.max(tempRect.x1,tempRect.x2);
     const y1=Math.min(tempRect.y1,tempRect.y2), y2=Math.max(tempRect.y1,tempRect.y2);
+    let justBuilt = null;
     if(x2-x1 >= CELL && y2-y1 >= CELL){
       pushUndo();
       // snap the whole box to nearby existing corners so rooms butt together cleanly
       const c1=smartSnap({x:x1,y:y1}), c2=smartSnap({x:x2,y:y2});
       S.walls.push({x1:c1.x,y1:c1.y,x2:c2.x,y2:c1.y},{x1:c2.x,y1:c1.y,x2:c2.x,y2:c2.y},
                    {x1:c2.x,y1:c2.y,x2:c1.x,y2:c2.y},{x1:c1.x,y1:c2.y,x2:c1.x,y2:c1.y});
+      justBuilt = { x:(c1.x+c2.x)/2, y:(c1.y+c2.y)/2 };
+    }
+    tempRect = null; dragStart = null; draw();
+    // naming the room is naturally the next step — auto-open it right here (toggle lives inside that sheet)
+    if(justBuilt && autoLabelPref()) setTimeout(() => placeRoom(justBuilt.x, justBuilt.y), 150);
+    return;
+  }
+  if(tempRect && tool==='circle'){
+    const x1=Math.min(tempRect.x1,tempRect.x2), x2=Math.max(tempRect.x1,tempRect.x2);
+    const y1=Math.min(tempRect.y1,tempRect.y2), y2=Math.max(tempRect.y1,tempRect.y2);
+    if(x2-x1 >= CELL*0.4 && y2-y1 >= CELL*0.4){
+      pushUndo();
+      S.circles.push({ x:(x1+x2)/2, y:(y1+y2)/2, rx:(x2-x1)/2, ry:(y2-y1)/2, rot:0 });
     }
     tempRect = null; dragStart = null; draw(); return;
+  }
+  if(tempRect && tool==='fill'){
+    const x1=Math.min(tempRect.x1,tempRect.x2), x2=Math.max(tempRect.x1,tempRect.x2);
+    const y1=Math.min(tempRect.y1,tempRect.y2), y2=Math.max(tempRect.y1,tempRect.y2);
+    tempRect = null; dragStart = null;
+    if(x2-x1 >= CELL*0.4 && y2-y1 >= CELL*0.4){
+      pushUndo();
+      const fa={ x:x1, y:y1, w:x2-x1, h:y2-y1, color:fillPref.color, mode:fillPref.mode, rot:0 };
+      S.fills.push(fa);
+      draw(); fillPicker(fa, true); return;   // open the colour/hatch picker right away
+    }
+    draw(); return;
+  }
+  if(tempSeg && tool==='walld'){
+    if(Math.hypot(tempSeg.x2-tempSeg.x1, tempSeg.y2-tempSeg.y1) >= CELL/2){
+      pushUndo();
+      const a=smartSnap({x:tempSeg.x1,y:tempSeg.y1}), b=smartSnap({x:tempSeg.x2,y:tempSeg.y2});
+      S.walls.push({x1:a.x,y1:a.y,x2:b.x,y2:b.y});   // free angle — no orientation lock applied
+    }
+    tempSeg = null; dragStart = null; draw(); return;
   }
   if(tempSeg && tool==='hall'){
     if(Math.hypot(tempSeg.x2-tempSeg.x1, tempSeg.y2-tempSeg.y1) >= CELL){
@@ -738,11 +1303,14 @@ wrap.addEventListener('pointerup', e => {
     }
     tempSeg = null; dragStart = null; draw(); return;
   }
-  if(tempSeg && tool==='stairs'){
-    if(Math.hypot(tempSeg.x2-tempSeg.x1, tempSeg.y2-tempSeg.y1) >= CELL){
-      pushUndo(); S.stairs.push({...tempSeg});
+  if(tempRect && tool==='stairs'){
+    const x1=Math.min(tempRect.x1,tempRect.x2), x2=Math.max(tempRect.x1,tempRect.x2);
+    const y1=Math.min(tempRect.y1,tempRect.y2), y2=Math.max(tempRect.y1,tempRect.y2);
+    if(x2-x1 >= MIN_STAIR && y2-y1 >= MIN_STAIR){
+      pushUndo();
+      S.stairs.push({ x:x1, y:y1, w:x2-x1, h:y2-y1, rot:0 });
     }
-    tempSeg = null; dragStart = null; draw(); return;
+    tempRect = null; dragStart = null; draw(); return;
   }
   if(tempSeg && (tool==='wallh'||tool==='wallv'||tool==='door')){
     if(Math.hypot(tempSeg.x2-tempSeg.x1, tempSeg.y2-tempSeg.y1) >= CELL/2){
@@ -793,11 +1361,9 @@ wrap.addEventListener('pointerup', e => {
       for(const w of vs){ const d=magnetDelta(w.x1,false,mv); if(d && (!dxm || Math.abs(d)<Math.abs(dxm))) dxm=d; }
       for(const w of moveTarget.walls){ w.x1+=dxm; w.y1+=dy; w.x2+=dxm; w.y2+=dy; }
       for(const d of moveTarget.doors){ d.x1+=dxm; d.y1+=dy; d.x2+=dxm; d.y2+=dy; }
-      for(const s of moveTarget.segs){ s.x1+=dxm; s.y1+=dy; s.x2+=dxm; s.y2+=dy; }
       for(const o of moveTarget.items){ o.x+=dxm; o.y+=dy; }
       for(const w of moveTarget.walls){ w.x1=snap(w.x1); w.y1=snap(w.y1); w.x2=snap(w.x2); w.y2=snap(w.y2); }
       for(const d of moveTarget.doors){ d.x1=snap(d.x1); d.y1=snap(d.y1); d.x2=snap(d.x2); d.y2=snap(d.y2); }
-      for(const s of moveTarget.segs){ s.x1=snap(s.x1); s.y1=snap(s.y1); s.x2=snap(s.x2); s.y2=snap(s.y2); }
       draw();
     } else if(moveTarget.kind==='room'){
       // a real drag of a room's number stamp locks its label there — stops the auto-shuffle
@@ -834,6 +1400,20 @@ wrap.addEventListener('pointerup', e => {
     const t = nearestOfKind(wpt, 'text', 26/view.z);
     if(t) editText(t); else placeText(snap(wpt.x), snap(wpt.y));
   }
+  else if(tool==='circle' && !movedFar){
+    const t = circleAt(wpt);
+    if(t) editCircle(t); else flash('Press & drag to draw a circle (hot water tanks, columns, floor drains...)');
+  }
+  else if(tool==='walld' && !movedFar){
+    flash('Press & drag to draw a diagonal wall — any angle, endpoints snap to the grid');
+  }
+  else if(tool==='fill' && !movedFar){
+    const fa=fillAt(wpt);
+    if(fa) editFill(fa); else flash('Press & drag a box over an area — then pick a colour, hatch, or Clear');
+  }
+  else if(tool==='import' && !movedFar){
+    if(S.bg) openBgSheet(); else document.getElementById('bgFile').click();
+  }
   else if(tool==='note'){
     const r = findRoomAt(wpt);
     if(r) openNoteSheet(r); else flash('Tap inside a room that has a number stamp');
@@ -846,6 +1426,37 @@ wrap.addEventListener('pointerup', e => {
   else if(tool==='erase'){ eraseAt(wpt); }
 });
 
+function circleAt(p){
+  // point inside the ellipse, or within a small margin of its edge, counts as a hit
+  // (rotated circles: test in the circle's own unrotated local space)
+  let best=null, bd=Infinity;
+  for(const c of (S.circles||[])){
+    const lp = c.rot ? rotateAround(p, {x:c.x,y:c.y}, -c.rot) : p;
+    const nx=(lp.x-c.x)/(c.rx+10), ny=(lp.y-c.y)/(c.ry+10);
+    const v = nx*nx+ny*ny;
+    if(v<=1 && v<bd){ bd=v; best=c; }
+  }
+  return best;
+}
+function fillAt(p){
+  // topmost fill whose rectangle contains the point (rotated fills: test in local space)
+  for(let i=(S.fills||[]).length-1; i>=0; i--){ const f=S.fills[i];
+    const cx=f.x+f.w/2, cy=f.y+f.h/2;
+    const lp = f.rot ? rotateAround(p, {x:cx,y:cy}, -f.rot) : p;
+    const x=Math.min(f.x,f.x+f.w), y=Math.min(f.y,f.y+f.h), w=Math.abs(f.w), h=Math.abs(f.h);
+    if(lp.x>=x && lp.x<=x+w && lp.y>=y && lp.y<=y+h) return f;
+  }
+  return null;
+}
+function stairAt(p){
+  // topmost stairway box that contains the point (rotated stairs: test in local space)
+  for(let i=(S.stairs||[]).length-1; i>=0; i--){ const st=S.stairs[i];
+    const cx=st.x+st.w/2, cy=st.y+st.h/2;
+    const lp = st.rot ? rotateAround(p, {x:cx,y:cy}, -st.rot) : p;
+    if(lp.x>=st.x-4 && lp.x<=st.x+st.w+4 && lp.y>=st.y-4 && lp.y<=st.y+st.h+4) return st;
+  }
+  return null;
+}
 function nearestOfKind(p, kind, r){
   const pools = { room:S.rooms, sample:S.samples, text:S.texts };
   let best=null, bd=r;
@@ -869,7 +1480,10 @@ function nearest(p, r){
   S.samples.forEach(o=>test(o,o.x,o.y,'sample'));
   S.texts.forEach(o=>test(o,o.x,o.y,'text'));
   const segTest=(arr,kind)=>arr.forEach(o=>{ const d=distToSeg(p,o); if(d<bd){bd=d;best={kind,obj:o};} });
-  segTest(S.walls,'wall'); segTest(S.doors,'door'); segTest(S.stairs||[],'stair');
+  // doors sit exactly on top of their host wall — check them FIRST so a tie (same coincident
+  // line) resolves to the more specific thing the user placed there, not the wall underneath it
+  // (stairs are a box now, checked separately via stairAt — not part of this segment test)
+  segTest(S.doors,'door'); segTest(S.walls,'wall');
   return best;
 }
 /* find everything attached to a wall: perpendicular walls sharing its corners + doors riding on it */
@@ -945,9 +1559,11 @@ function roomMoveTarget(p){
     }
   }
   const inside=(o)=>o.x>rect.xl && o.x<rect.xr && o.y>rect.yt && o.y<rect.yb;
-  const items=[...S.rooms.filter(r=>r.x!=null && inside(r)), ...S.samples.filter(inside), ...S.texts.filter(inside)];
-  const segs=(S.stairs||[]).filter(st=>st.x1>rect.xl-3&&st.x2<rect.xr+3&&st.y1>rect.yt-3&&st.y2<rect.yb+3);
-  return {kind:'roomMove', walls, doors, segs, items};
+  // stairs are a box now (like Fill/Circle) — bundle by their centre point, same as everything else in `items`
+  const items=[...S.rooms.filter(r=>r.x!=null && inside(r)), ...S.samples.filter(inside), ...S.texts.filter(inside),
+    ...(S.circles||[]).filter(inside),
+    ...(S.stairs||[]).filter(st=>inside({x:st.x+st.w/2, y:st.y+st.h/2}))];
+  return {kind:'roomMove', walls, doors, items};
 }
 function snapWallGroup(t){
   const w=t.obj;
@@ -957,11 +1573,11 @@ function snapWallGroup(t){
 }
 function shift(t, dx, dy){
   const o=t.obj;
-  if(t.kind==='wall'||t.kind==='door'||t.kind==='stair'){ o.x1+=dx;o.y1+=dy;o.x2+=dx;o.y2+=dy; }
-  else { o.x+=dx; o.y+=dy; }
+  if(t.kind==='wall'||t.kind==='door'){ o.x1+=dx;o.y1+=dy;o.x2+=dx;o.y2+=dy; }
+  else { o.x+=dx; o.y+=dy; }   // circles, fills, stairs (box, top-left corner), samples/rooms/text (point)
 }
 function eraseItem(t){
-  const pools={wall:S.walls,door:S.doors,room:S.rooms,sample:S.samples,text:S.texts};
+  const pools={wall:S.walls,door:S.doors,room:S.rooms,sample:S.samples,text:S.texts,circle:S.circles,fill:S.fills,stair:S.stairs};
   const arr=pools[t.kind]; arr.splice(arr.indexOf(t.obj),1);
 }
 
@@ -1029,6 +1645,14 @@ function eraseAt(p){
       const oy = (kind==='room' && o._ly!==undefined) ? o._ly : o.y;
       const d=Math.hypot(p.x-ox,p.y-oy); if(d<bd){bd=d;cand={kind,obj:o};}
     }
+  if(!cand){
+    const cc = circleAt(p);
+    if(cc){ cand = {kind:'circle', obj:cc}; bd=0; }
+  }
+  if(!cand){
+    const sa = stairAt(p);
+    if(sa){ cand = {kind:'stair', obj:sa}; bd=0; }
+  }
   if(cand && cand.kind==='room'){
     const r=cand.obj;
     const extras = (r.notes || (r.photos&&r.photos.length)) ? ' Its notes and photos will be removed with it.' : '';
@@ -1042,16 +1666,16 @@ function eraseAt(p){
         draw(); refreshNotes(); refreshResults(); flash(`Room ${r.num} erased`); });
     return;
   }
-  if(cand){ pushUndo(); eraseItem(cand); draw(); refreshResults(); return; }
+  if(cand){ pushUndo(); deselectIfGone(cand.obj); eraseItem(cand); draw(); refreshResults(); return; }
   bd=tol; let dc=null;
   for(const o of S.doors){ const d=distToSeg(p,o); if(d<bd){bd=d;dc=o;} }
-  if(dc){ pushUndo(); S.doors.splice(S.doors.indexOf(dc),1); draw(); return; }
-  bd=tol; let sc2=null;
-  for(const o of (S.stairs||[])){ const d=distToSeg(p,o); if(d<bd+CELL/2){bd=d;sc2=o;} }
-  if(sc2){ pushUndo(); S.stairs.splice(S.stairs.indexOf(sc2),1); draw(); return; }
+  if(dc){ pushUndo(); deselectIfGone(dc); S.doors.splice(S.doors.indexOf(dc),1); draw(); return; }
   bd=tol; let wc=null;
   for(const o of S.walls){ const d=distToSeg(p,o); if(d<bd){bd=d;wc=o;} }
-  if(wc){ pushUndo(); chunkErase(wc,p); draw(); }
+  if(wc){ pushUndo(); chunkErase(wc,p); draw(); return; }
+  // fills are the bottom layer, so erasing one only happens when nothing else is under the tap
+  const fa=fillAt(p);
+  if(fa){ pushUndo(); deselectIfGone(fa); S.fills.splice(S.fills.indexOf(fa),1); draw(); }
 }
 function chunkErase(w,p){
   S.walls.splice(S.walls.indexOf(w),1);
@@ -1089,6 +1713,7 @@ function surfVal(key){
   return [...sheet.querySelectorAll(`#grp-${key} select`)].map(s=>s.value.trim()).filter(Boolean).join(' + ');
 }
 
+function autoLabelPref(){ try{ const v = localStorage.getItem('apexAutoLabelRoom'); return v===null ? true : v==='1'; }catch(e){ return true; } }
 function placeRoom(x,y){   // x,y may be null: a notes-only room (no drawing yet)
   const num = S.rooms.length ? Math.max(...S.rooms.map(r=>+r.num))+1 : 1;
   openSheet(`<h2>Room / Location ${num}</h2>
@@ -1098,13 +1723,19 @@ function placeRoom(x,y){   // x,y may be null: a notes-only room (no drawing yet
       ${surfGroup('c','Ceiling (C)','')}
       ${surfGroup('f','Floor (F)','')}
     </div>
-    <div class="chk"><input type="checkbox" id="f-sio2"><label style="margin:0">SiO&#8322; / dust contamination evident in this room</label></div>`,
+    <div class="chk"><input type="checkbox" id="f-sio2"><label style="margin:0">SiO&#8322; / dust contamination evident in this room</label></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;color:#666;">
+      <input type="checkbox" id="f-autopop" ${autoLabelPref()?'checked':''} style="width:16px;height:16px;flex:0 0 auto;">
+      Auto-open this after drawing a new room
+    </label>`,
     ()=>{ pushUndo();
       S.rooms.push({x,y,num:String(num),name:val('f-name'),w:surfVal('w'),c:surfVal('c'),f:surfVal('f'),silica:document.getElementById('f-sio2').checked,notes:'',photos:[]});
       draw(); refreshNotes();
       flash(x==null ? `Room ${num} added (notes-only) — it's in the locations list and PDF` :
         `Room ${num} saved — name & finishes show on screen and in the final locations list`); });
   wireSurf();
+  const apChk = document.getElementById('f-autopop');
+  if(apChk) apChk.onchange = () => { try{ localStorage.setItem('apexAutoLabelRoom', apChk.checked?'1':'0'); }catch(e){} };
 }
 function editRoom(r){
   openSheet(`<h2>Edit Room / Location ${r.num}</h2>
@@ -1142,8 +1773,8 @@ function editSample(s){
 }
 /* ===== photos: stored in PHOTOS (outside undo snapshots), referenced by rooms, travel in the job file ===== */
 let PHOTOS = {}, pendingPhotoRoom = null, photoSeq = 1;
-function jobJson(){ return JSON.stringify({...S, _photos: PHOTOS}, null, 1); }
-function loadJobObj(o){ PHOTOS = o._photos || {}; delete o._photos; S = o; normalize(); }
+function jobJson(){ return JSON.stringify({...S, _photos: PHOTOS, _bg: BG_SRC}, null, 1); }
+function loadJobObj(o){ PHOTOS = o._photos || {}; delete o._photos; BG_SRC = o._bg || null; bgImgSrcLoaded = null; delete o._bg; S = o; normalize(); selected=null; resizeDrag=null; objPinch=null; }
 const loadImg = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.src = src; });
 document.getElementById('photoFile').onchange = e => {
   const room = pendingPhotoRoom; if(!room) return;
@@ -1167,6 +1798,47 @@ document.getElementById('photoFile').onchange = e => {
   }
   e.target.value = '';
 };
+/* ===== imported background plan: file picked from the Import tool ===== */
+document.getElementById('bgFile').onchange = e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if(!f) return;
+  if(f.type === 'application/pdf' || /\.pdf$/i.test(f.name)){
+    openSheet(`<h2>Importing a PDF plan</h2>
+      <p style="font-size:13.5px;color:#333;line-height:1.6;">For now, take a <b>screenshot</b> of the PDF
+      page (or use its "Save/Print as image" option) and import that image — you can crop it and mark it
+      up exactly the same way.</p>
+      <p style="font-size:13.5px;color:#1C4E9E;line-height:1.6;margin-top:8px;"><b>Coming in the full version:</b>
+      drop a PDF straight in and just pick the page — no screenshot needed.</p>`, null);
+    return;
+  }
+  const url = URL.createObjectURL(f);
+  const im = new Image();
+  im.onload = () => {
+    const maxDim = 2000;   // cap so the job file doesn't balloon — plenty of resolution to mark up against
+    const sc = Math.min(1, maxDim / Math.max(im.width, im.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(im.width*sc); c.height = Math.round(im.height*sc);
+    c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    placeBgFromCanvas(c, 'Plan imported — drag to reposition, drag the corner to resize, tap it for Crop/Replace/Remove');
+  };
+  im.src = url;
+};
+/* shared: drop a rendered canvas (from an image OR a PDF page) in as the background layer to mark up */
+function placeBgFromCanvas(c, msg){
+  pushUndo();
+  BG_SRC = c.toDataURL('image/jpeg', 0.85); bgImgSrcLoaded = null;
+  // default placement: fit inside the CURRENTLY VISIBLE area (not a fixed size) so the whole image —
+  // including its resize handle — always lands on-screen right after import, regardless of zoom/device
+  const vw = wrap.clientWidth/view.z, vh = wrap.clientHeight/view.z;
+  const ratio = c.height/c.width;
+  let w = vw*0.7, h = w*ratio;
+  if(h > vh*0.7){ h = vh*0.7; w = h/ratio; }
+  const cx = view.x + vw/2, cy = view.y + vh/2;
+  S.bg = { natW:c.width, natH:c.height, x:cx-w/2, y:cy-h/2, w, h };
+  draw();
+  flash(msg || 'Plan imported — drag to reposition, drag the corner to resize, tap it for Crop/Replace/Remove');
+}
 function photoSheet(r, ph){
   openSheet(`<h2>📷 Room ${r.num}${r.name ? ' · ' + r.name : ''}</h2>
     <img src="${PHOTOS[ph.pid]}" style="width:100%;border-radius:8px;">
@@ -1298,6 +1970,77 @@ function placeText(x,y){
   openSheet(`<h2>Text note</h2><label>Text</label><input id="f-t" placeholder="e.g. Unit 3, roof, to below">`,
     ()=>{ if(val('f-t')){ pushUndo(); S.texts.push({x,y,str:val('f-t')}); draw(); } });
 }
+/* ===== fixture symbol picker + circle notes ===== */
+function fixturePickerButtons(selectedKind){
+  return FIXTURE_ORDER.map(k=>{
+    const d = FIXTURE_DEFS[k], on = k===selectedKind;
+    return `<button data-fx="${k}" style="flex:1 1 30%;padding:10px 4px;border-radius:9px;border:2px solid var(--blue);
+      background:${on?'var(--blue)':'#fff'};color:${on?'#fff':'var(--blue)'};font-weight:bold;font-size:12.5px;">${d.label}</button>`;
+  }).join('');
+}
+function placeFixture(x,y){
+  openSheet(`<h2>Place a fixture symbol</h2>
+    <p style="font-size:12.5px;color:#666;margin:4px 0 8px;">Tap a symbol to drop it here. The drawing itself shows a
+    clean vector icon — this list uses emoji just so it's quick to scan.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">${fixturePickerButtons(null)}</div>`, null);
+  sheet.querySelectorAll('button[data-fx]').forEach(b=>b.onclick=()=>{
+    pushUndo(); S.fixtures.push({x,y,kind:b.dataset.fx}); modal.style.display='none'; draw();
+  });
+}
+function editFixture(f){
+  openSheet(`<h2>Change fixture symbol</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">${fixturePickerButtons(f.kind)}</div>`, null,
+    ()=>{ pushUndo(); S.fixtures.splice(S.fixtures.indexOf(f),1); draw(); });
+  sheet.querySelectorAll('button[data-fx]').forEach(b=>b.onclick=()=>{
+    pushUndo(); f.kind=b.dataset.fx; modal.style.display='none'; draw();
+  });
+}
+function editCircle(c){
+  openSheet(`<h2>Circle</h2>
+    <p style="font-size:13.5px;color:#555;">With the Move tool: drag it to reposition, or drag a corner handle
+    (or pinch with two fingers) to resize it.</p>`,
+    null,
+    ()=>{ pushUndo(); deselectIfGone(c); S.circles.splice(S.circles.indexOf(c),1); draw(); });
+}
+/* ===== fill / clear-area picker ===== */
+const FILL_OPTS = [
+  {mode:'clear', color:'#ffffff', label:'⬜ Clear / white-out'},
+  {mode:'solid', color:'#e53935', label:'Red'},        {mode:'hatch', color:'#e53935', label:'Red ▤'},
+  {mode:'solid', color:'#fb8c00', label:'Orange'},     {mode:'hatch', color:'#fb8c00', label:'Orange ▤'},
+  {mode:'solid', color:'#fdd835', label:'Yellow'},     {mode:'hatch', color:'#fdd835', label:'Yellow ▤'},
+  {mode:'solid', color:'#43a047', label:'Green'},      {mode:'hatch', color:'#43a047', label:'Green ▤'},
+  {mode:'solid', color:'#1e88e5', label:'Blue'},       {mode:'hatch', color:'#1e88e5', label:'Blue ▤'},
+  {mode:'solid', color:'#8e24aa', label:'Purple'},     {mode:'hatch', color:'#8e24aa', label:'Purple ▤'},
+  {mode:'solid', color:'#607d8b', label:'Grey'},       {mode:'hatch', color:'#607d8b', label:'Grey ▤'},
+];
+function fillPickerButtons(fa){
+  return FILL_OPTS.map((o,i)=>{
+    const on = fa && o.mode===fa.mode && (o.mode==='clear' || o.color===fa.color);
+    const light = (o.mode==='clear' || o.color==='#fdd835');
+    const bg = o.mode==='clear' ? '#fff'
+      : o.mode==='hatch' ? `repeating-linear-gradient(45deg, ${o.color}, ${o.color} 3px, #fff 3px, #fff 6px)`
+      : o.color;
+    return `<button data-fi="${i}" style="flex:1 1 30%;padding:12px 4px;border-radius:9px;
+      border:${on?'3px solid #111':'2px solid #ccc'};background:${bg};color:${light?'#222':'#fff'};
+      font-weight:bold;font-size:12px;text-shadow:${light?'none':'0 0 3px rgba(0,0,0,.45)'};">${o.label}</button>`;
+  }).join('');
+}
+function fillPicker(fa, isNew){
+  openSheet(`<h2>Fill / clear area</h2>
+    <p style="font-size:12.5px;color:#666;margin:4px 0 8px;">Colour or hatch a zone for mould / contamination —
+    solid is a light wash, ▤ is hatched. Or use <b>Clear</b> to white-out a congested spot on an imported plan.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:7px;">${fillPickerButtons(fa)}</div>`,
+    null,
+    ()=>{ pushUndo(); deselectIfGone(fa); S.fills.splice(S.fills.indexOf(fa),1); draw(); });
+  sheet.querySelectorAll('button[data-fi]').forEach(b=>b.onclick=()=>{
+    const o=FILL_OPTS[+b.dataset.fi];
+    if(!isNew) pushUndo();
+    fa.mode=o.mode; fa.color=o.color;
+    fillPref={ color:o.color, mode:o.mode };   // remember for the next area drawn
+    modal.style.display='none'; draw();
+  });
+}
+function editFill(fa){ fillPicker(fa, false); }
 function val(id){ return document.getElementById(id).value.trim(); }
 
 const modal=document.getElementById('modal'), sheet=document.getElementById('sheet');
@@ -1309,6 +2052,90 @@ function openSheet(html, ok, delFn){
   document.getElementById('cancel').onclick=()=>{ modal.style.display='none'; };
   if(delFn) document.getElementById('del').onclick=()=>{ modal.style.display='none'; delFn(); };
 }
+
+/* ===== first-use explainer popups — one per tool, shown the first time it's selected =====
+   Add a FEATURE_INFO entry for any new/non-obvious button; the toolbar click handler below
+   calls maybeIntroFeature(tool) on every selection, and this looks itself up and does nothing
+   once dismissed (or never, if the "don't show again" box is left unchecked). */
+const FEATURE_INFO = {
+  walld: { title:'Wall Diag', body:"Draws a wall at ANY angle — not just straight up/down or side to side. Press and drag like the other wall tools; both ends still snap to the grid, but the wall itself can point any direction (45°, or anything in between)." },
+  circle: { title:'Circle', body:"Draws a round object — hot water tanks, columns, floor drains, anything that isn't a straight-edged room. Drag out an oval to the size you need. With the Move tool, tap an existing circle to select it — drag a corner handle (or pinch with two fingers) to resize it, or open it to remove it." },
+  fill: { title:'Fill / Clear Area', body:'Drag a box over an area, then pick a colour or hatch pattern to flag a mould/contamination zone — or pick "Clear" to white-out a busy spot on the drawing. With the Move tool, tap an existing filled area to select it — drag a corner handle (or pinch) to resize it, or open it to change its colour or remove it.' },
+  import: { title:'Import', body:"Bring in a client's existing floor plan and mark it up directly, instead of drawing from scratch. Works with photos and screenshots (PNG/JPG) — if the plan is a PDF, take a screenshot of the page and import that image (direct PDF import is coming in the full version). Once it's in: drag the image to move it, drag its bottom-right corner to resize it, and tap it again for Crop / Replace / Remove. Tap Import again now to choose a file." },
+  move: { title:'Move — select, resize & rotate', body:"Tap a circle, filled area, door, or stairway to SELECT it — a dashed outline and corner (or end) handles appear. Drag a corner handle to resize, or pinch with two fingers on a touchscreen. Circles, filled areas, and stairways also get a round green handle above them — drag it to rotate the object (it gently snaps every 15°). Drag the shape itself (away from any handle) to reposition it — the cursor turns into a grabbing hand while you do. Walls resize the same way they always have — just drag one, or drag a corner to resize two at once. Tap empty space or switch tools to deselect." },
+  stairs: { title:'Stairs', body:"Drag a box the size of the stairway. Once placed, switch to Move and tap it to select it — drag a corner handle to resize both length and width, or the green handle to rotate it." },
+};
+function seenFeatures(){ try{ return JSON.parse(localStorage.getItem('apexSeenFeatures')||'{}'); }catch(e){ return {}; } }
+function maybeIntroFeature(key){
+  const info = FEATURE_INFO[key]; if(!info) return;
+  if(seenFeatures()[key]) return;
+  sheet.innerHTML = `<h2>${info.title}</h2>
+    <p style="font-size:14px;color:#333;line-height:1.5;margin:8px 0 0;">${info.body}</p>
+    <label style="display:flex;align-items:center;gap:8px;margin:16px 0 4px;font-size:13px;color:#555;">
+      <input type="checkbox" id="f-dontshow" checked style="width:17px;height:17px;flex:0 0 auto;"> Don't show this again
+    </label>
+    <div class="btns"><button id="f-gotit">Got it</button></div>`;
+  modal.style.display='block';
+  document.getElementById('f-gotit').onclick = () => {
+    if(document.getElementById('f-dontshow').checked){
+      const s = seenFeatures(); s[key] = true;
+      try{ localStorage.setItem('apexSeenFeatures', JSON.stringify(s)); }catch(e){}
+    }
+    modal.style.display='none';
+  };
+}
+
+/* ===== "what's new" recap — shown once per version, only to RETURNING users (never to a brand-new
+   install, which gets the full first-open tour instead). Add one CHANGELOG entry per shipped version;
+   on load, anyone who last saw an OLDER version gets a popup listing everything since their last visit. */
+const CHANGELOG = [
+  { version:'v34', items:[
+    'Wall Diag — draw a wall at any angle, not just straight lines.',
+    'Circle — draw round objects like hot water tanks, columns, floor drains.' ] },
+  { version:'v35', items:[
+    'Fill / Clear Area — shade or hatch a zone for mould/contamination, or white-out a busy spot.' ] },
+  { version:'v36', items:[
+    'Removed the Fixture symbol tool.' ] },
+  { version:'v37', items:[
+    'New tools now explain themselves the first time you tap them (with a "don\'t show again" option).',
+    'This "What\'s new" popup — a quick recap after we ship updates, so you don\'t have to hunt for what changed.' ] },
+  { version:'v38', items:[
+    'Import — bring in a photo or scan of a client\'s existing floor plan and mark it up directly. Drag to move, drag the corner to resize, tap it for Crop / Replace / Remove. (PDF files aren\'t supported yet — screenshot a PDF page and import that instead.)' ] },
+  { version:'v39', items:[
+    'On a phone, the tool row now shows a soft shadow on whichever side has more tools — swipe that direction to see them.',
+    'On a wider screen (laptop/desktop), the tool row wraps onto a second line instead of scrolling sideways.' ] },
+  { version:'v40', items:[
+    'Circles, filled areas, and stairways can now be resized after they\'re placed — tap one with the Move tool to select it, then drag a corner (or end) handle, or pinch it with two fingers.',
+    'A selected item now shows a dashed outline and handles so it\'s clear what you\'re about to move or resize.' ] },
+  { version:'v41', items:[
+    'Doors can now be resized the same way — select one with the Move tool, then drag an end handle to lengthen or shorten the opening.',
+    'Walls now visibly highlight the moment you grab one (or a corner) with the Move tool, so it\'s always clear what you\'re about to adjust.',
+    'The Room button moved next to Room Box, since numbering a room is usually the next step after drawing one.',
+    'Drawing a new Room Box now automatically opens the room-naming popup right away (there\'s a checkbox in that popup to turn this off).' ] },
+  { version:'v42', items:[
+    'Circles, filled areas, and stairways can now be rotated — select one with the Move tool and drag its round green handle.',
+    'While dragging any object, the cursor now shows a "grabbing hand" until you let go.',
+    'Stairways are now fully resizable in both directions — drag a corner handle to change length AND width, just like circles and filled areas.' ] },
+  { version:'v44', items:[
+    'Import a client\'s floor plan (photo or screenshot) and mark it up right on top — drag to move, drag the corner to resize, tap for Crop / Replace / Remove.',
+    'Working with a PDF plan? Screenshot the page and import that for now — dropping a PDF straight in is coming in the full version.' ] },
+];
+function maybeShowWhatsNew(){
+  const last = localStorage.getItem('apexLastSeenVersion') || '';
+  if(last === APP_VERSION) return;
+  const idx = CHANGELOG.findIndex(c => c.version === last);
+  const unseen = idx === -1 ? CHANGELOG : CHANGELOG.slice(idx + 1);
+  if(!unseen.length){ try{ localStorage.setItem('apexLastSeenVersion', APP_VERSION); }catch(e){} return; }
+  const body = unseen.map(c => `<p style="margin:12px 0 4px;font-weight:bold;color:#1C4E9E;">${c.version}</p>
+    <ul style="margin:0 0 4px 18px;padding:0;">${c.items.map(i => `<li style="font-size:13.5px;color:#333;margin:4px 0;line-height:1.4;">${i}</li>`).join('')}</ul>`).join('');
+  sheet.innerHTML = `<h2>What's new</h2>${body}<div class="btns"><button id="wn-gotit">Got it</button></div>`;
+  modal.style.display='block';
+  document.getElementById('wn-gotit').onclick = () => {
+    try{ localStorage.setItem('apexLastSeenVersion', APP_VERSION); }catch(e){}
+    modal.style.display='none';
+  };
+}
+
 /* one-tap result picker: tap a sample with the Move tool */
 function quickResult(s){
   const btn=(k,m)=>{ const on=['pending','negative'].includes(k);
@@ -1363,15 +2190,16 @@ function saveMenu(){
 function resetJob(){
   S = { header:{ project:'', address:'', client:'', tech:S.header.tech||'', bd:'', scope:'',
         date:new Date().toLocaleDateString('en-CA') },
-        walls:[], doors:[], rooms:[], samples:[], texts:[], gnotes:'', signoffs:[] };
-  PHOTOS={};
+        walls:[], doors:[], rooms:[], samples:[], texts:[], stairs:[], circles:[], fills:[], bg:null, gnotes:'', signoffs:[] };
+  PHOTOS={}; BG_SRC=null; bgImgSrcLoaded=null;
+  selected=null; resizeDrag=null; objPinch=null;
   undoStack.length=0; redoStack.length=0;
   draw(); refreshResults(); refreshNotes(); flash('New job started');
   setTimeout(()=>openJobInfo(false), 150);   // job info first — get the project details in up front
 }
 document.getElementById('saveBtn').onclick = saveMenu;
 /* ===== HELP / SOP / FEEDBACK ===== */
-const APP_VERSION = 'v33';
+const APP_VERSION = 'v44';
 const SOP_HTML = `
 <h2>? Help — APEX Field Sketch ${APP_VERSION}</h2>
 <div style="max-height:52vh;overflow-y:auto;font-size:13.5px;line-height:1.5;color:#333;">
@@ -1380,9 +2208,12 @@ const SOP_HTML = `
 your initials, the PM, build date, and scope. This feeds every export automatically.</p>
 <p><b>2. Draw the map.</b> Room Box: drag diagonally — a whole room appears. Hallway: drag between rooms —
 both corridor walls draw and connect. Wall H / Wall V for details (H always draws horizontal, V always
-vertical — pick the one you need, no more guessing), Door, Stairs for stairwells.
-Made a mistake? Erase removes one wall square per tap; Undo/Redo are always there.
-To resize a room: Move tool, drag any wall — corners stay attached.</p>
+vertical — pick the one you need, no more guessing); Wall Diag for anything at an angle. Door, Stairs for
+stairwells. Circle for anything round (hot water tanks, columns, floor drains). Fill shades or hatches an
+area for mould/contamination, or clears a busy spot. Import brings in a photo/scan of an existing plan to
+mark up directly (drag to move, drag the corner to resize, tap it for Crop/Replace/Remove).
+Made a mistake? Erase removes one wall square per tap (or a whole circle in one tap); Undo/Redo
+are always there. To resize a room: Move tool, drag any wall — corners stay attached.</p>
 <p><b>3. Number the rooms.</b> Room tool, tap inside each room. Give it a name and its wall/ceiling/floor
 finishes (+ add another for multiple). Tick SiO&#8322; if dust contamination is evident.</p>
 <p><b>4. Drop your samples.</b> ● asbestos, ▲ lead, ◆ other — tap where you physically sampled.
@@ -1471,7 +2302,7 @@ document.getElementById('helpBtn').onclick = () => {
 const TOUR_STEPS = [
   { sel:'#jobBtn',  text:'START HERE — Job Info: project number, address, client, PM, your initials. Fill it once; every export uses it.' },
   { sel:'#tabs',    text:'The tabs: DRAW the map · NOTES per room (type or dictate) · LEGEND is the key to every symbol · RESULTS is where lab results get entered · EXPORT to save, sign off and share.' },
-  { sel:'#tools',   text:'Drawing: drag a ROOM BOX diagonally for a whole room. HALLWAY connects rooms. STAIRS, WALL H (always horizontal), WALL V (always vertical) & DOOR for details. Drop ●▲◆ samples where you sampled. ROOM numbers each room. MOVE resizes rooms (drag a wall — corners stay attached). ERASE rubs out one wall square.' },
+  { sel:'#tools',   text:'Drawing: drag a ROOM BOX diagonally for a whole room. HALLWAY connects rooms. STAIRS, WALL H (always horizontal), WALL V (always vertical), WALL DIAG (any angle) & DOOR for details. CIRCLE for anything round. FILL shades/hatches a mould or contamination area (or clears a busy spot). IMPORT brings in a photo of an existing plan to mark up. Drop ●▲◆ samples where you sampled. ROOM numbers each room. MOVE resizes rooms (drag a wall — corners stay attached). ERASE rubs out one wall square.' },
   { sel:'#wrap',    text:'Rooms show their number, name and finishes. The 📷 in each room corner opens your camera — photos file themselves to that room. Tap a sample with Move to set its lab result colour. Everything here can be edited from Notes too.' },
   { sel:'#saveBtn', text:'SAVE gives you the editable Job File, the PDF drawing, or a PNG image. NEW warns you to save first so nothing is ever lost.' },
   { sel:'#helpBtn', text:'And this ? button is always here — the full SOP walkthrough, tips, and a box to send us your questions and ideas. That is the tour!' }
@@ -1510,12 +2341,13 @@ function nextTour(){
 /* ===== DEMO JOB: mock two-floor house, fully filled out ===== */
 function loadDemo(){
   const go=()=>{
-    PHOTOS={};
+    PHOTOS={}; BG_SRC=null; bgImgSrcLoaded=null;
+    selected=null; resizeDrag=null; objPinch=null;
     const C=CELL;
     S={ header:{project:'DEMO26-001',address:'1 & 2 - 123 Example Ave, Kelowna, BC',client:'Demo Client Ltd.',
         tech:EDITOR?EDITOR.name:'Demo',pm:'J. Manager',bd:'1968',scope:'Pre-reno HMS — main floor & basement',
         date:new Date().toLocaleDateString('en-CA')},
-      walls:[], doors:[], rooms:[], samples:[], texts:[], stairs:[],
+      walls:[], doors:[], rooms:[], samples:[], texts:[], stairs:[], circles:[], fills:[], bg:null,
       gnotes:'Demo job — every feature in use. Two levels drawn side by side.',
       signoffs:[{name:'Demo Tech',role:'Field Technician',date:new Date().toLocaleDateString('en-CA')}],
       history:[], status:'Lab Results Entered', legendExtra:'' };
@@ -1528,7 +2360,7 @@ function loadDemo(){
     // BASEMENT below
     box(2*C,14*C,12*C,20*C); box(12*C,14*C,20*C,20*C);
     S.texts.push({x:2*C,y:13*C,str:'BASEMENT'});
-    S.stairs.push({x1:21*C,y1:12*C,x2:21*C,y2:16*C});
+    S.stairs.push({x:20*C,y:12*C,w:2*C,h:4*C,rot:0});
     S.rooms.push(
       {x:6*C,y:6*C,num:'1',name:'Kitchen',w:'DW',c:'TC/DW',f:'VSF',silica:false,notes:'Sink wall opened previously. 3 DJC samples at ceiling corner.',photos:[]},
       {x:14*C,y:6*C,num:'2',name:'Living Room',w:'DW + Plaster',c:'Plaster',f:'Carpet',silica:false,notes:'Original plaster on north wall.',photos:[]},
@@ -1665,18 +2497,29 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
 });
 document.querySelectorAll('#tools button[data-tool]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#tools button[data-tool]').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  cropMode = false;   // switching tools always cancels an in-progress crop
+  selected = null; resizeDrag = null; objPinch = null;   // switching tools always clears the Move-tool selection
+  const alreadySeenImport = !!seenFeatures().import;
   tool=b.dataset.tool;
+  maybeIntroFeature(tool);
+  // first time selecting Import: just show the explainer (below) — don't also pop the OS file dialog on top of it.
+  // every time after that (already dismissed), jump straight to picking a file, same as the Photo button.
+  if(tool==='import' && !S.bg && alreadySeenImport){ document.getElementById('bgFile').click(); }
   document.getElementById('hint').textContent = {
     box:'Drag diagonally — a whole room appears, corners auto-closed', hall:'Drag between rooms — both corridor walls draw at once',
     stairs:'Drag the run of the stairs — rails and rungs draw automatically',
     wallh:'TAP = one grid square of horizontal wall · press & drag = long wall (always horizontal)',
     wallv:'TAP = one grid square of vertical wall · press & drag = long wall (always vertical)',
+    walld:'Press & drag for a wall at any angle — endpoints snap to the grid',
     door:'Drag along a wall to cut a door opening',
+    circle:'Drag to size a circle — hot water tanks, columns, floor drains, anything round',
+    fill:'Drag a box over an area, then pick a colour/hatch — or Clear to white-out a congested spot',
+    import:'Tap to bring in a photo/scan of an existing plan · once imported: drag to move, drag the corner to resize, tap it for Crop/Replace/Remove',
     room:'Tap inside a room to number it · tap an existing number to edit it', asb:'Tap to place ● asbestos · tap an existing sample to edit',
     lead:'Tap to place ▲ lead · tap an existing sample to edit',
     text:'Tap to add a text note · tap existing text to edit', note:'Tap inside a room to write/dictate its notes',
     photo:'Tap inside a room — camera opens, photo attaches to that room',
-    move:'Drag a wall — the room resizes, corners stay attached · TAP a sample for its colour',
+    move:'Drag a wall — the room resizes, corners stay attached · TAP a circle/fill/door/stairway to select it, then drag a handle (or pinch) to resize · TAP a sample for its colour',
     erase:'Tap a wall — erases just that grid section · tap a number/sample to delete it' }[tool];
 });
 document.getElementById('undoBtn').onclick=undo;
@@ -1808,6 +2651,7 @@ function renderFinal(){
   const addPt=(x,y)=>{xs.push(x);ys.push(y);};
   S.walls.concat(S.doors).forEach(w=>{addPt(w.x1,w.y1);addPt(w.x2,w.y2);});
   S.rooms.forEach(r=>addPt(r.x,r.y)); S.samples.forEach(s=>addPt(s.x,s.y)); S.texts.forEach(t=>addPt(t.x,t.y));
+  if(S.bg){ addPt(S.bg.x,S.bg.y); addPt(S.bg.x+S.bg.w, S.bg.y+S.bg.h); }   // keep the imported plan in frame even with nothing drawn on it yet
   if(xs.length){
     const bx1=Math.min(...xs)-CELL, by1=Math.min(...ys)-CELL, bx2=Math.max(...xs)+CELL, by2=Math.max(...ys)+CELL;
     const R={x:px(430),y:px(148),w:px(950),h:px(470)};
@@ -2467,7 +3311,8 @@ try{
       if(EDITOR && modal.style.display!=='block' && gate.style.display!=='block'){ clearInterval(waitId); startTour(); }
     }, 800);
   } else {
-    setTimeout(maybeInstallBanner, 1600);   // returning users get the install nudge
+    setTimeout(maybeShowWhatsNew, 700);     // returning users: recap anything shipped since their last visit
+    setTimeout(maybeInstallBanner, 1900);   // then the install nudge, staggered after any what's-new popup
   }
 }catch(e){}
 /* register the service worker so the app opens offline + is installable (hosted https only) */
